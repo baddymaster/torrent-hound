@@ -1,3 +1,7 @@
+#!/usr/bin/env python
+# @author : Yashovardhan Sharma
+# @github : github.com/baddymaster
+
 #   <Torrent Hound - Search torrents from multiple websites via the CLI.>
 #    Copyright (C) <2017>  <Yashovardhan Sharma>
 #
@@ -13,10 +17,6 @@
 #
 #     You should have received a copy of the GNU Affero General Public License
 #     along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-#!/usr/bin/env python
-# @author : Yashovardhan Sharma
-# @github : github.com/baddymaster
 
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
