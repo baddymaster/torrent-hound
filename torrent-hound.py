@@ -35,6 +35,16 @@ ORDER_BY = enum(NAME = 1,
                 TYPE = 13,
                 UPLOADED = 99)
 
+ORDER_BY_SKY = enum(RELEVANCE = 'ss',
+                    SEEDS_DESC = 'ed',
+                    SEEDS_ASC = 'ea',
+                    PEERS_DESC = 'pd',
+                    PEERS_ASC = 'pa',
+                    SIZE_DESC = 'sd',
+                    SIZE_ASC = 'sa',
+                    NEWEST = 'ad',
+                    OLDEST = 'aa')
+
 def generateNewTorrentAPIToken(error=False):
     global auth_token
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
@@ -166,11 +176,11 @@ def pretty_print_top_results_rarbg(limit=10):
         print table_rarbg
         return 0
 
-def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.in'):
+def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.in', order_by=ORDER_BY_SKY.RELEVANCE):
     global results_sky
     search_string = removeAndReplaceSpaces(search_string)
     baseURL = 'https://www.' + domain
-    url = baseURL + '/search/all/ed/1/?l=en-us&q=' + search_string
+    url = baseURL + '/search/all/' + order_by + '/1/?l=en-us&q=' + search_string
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
     try:
         r = requests.get(url, headers=headers)
