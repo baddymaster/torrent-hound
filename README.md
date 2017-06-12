@@ -11,6 +11,10 @@ Search torrents from multiple websites via the CLI
 - VeryPrettyTable
 
 
+### Installation
+Run `pip install -r requirements.txt` in the shell to install all dependencies
+
+
 ### Usage
 Download the `torrent-hound` binary from the `bin/` directory.
 
