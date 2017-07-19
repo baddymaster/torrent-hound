@@ -336,7 +336,7 @@ def searchPirateBay(search_string=defaultQuery, page = 0, order_by = ORDER_BY.UP
         else:
             error_str = colored.red("[PirateBay] Unhandled Error : ") + colored.red(str(e)) + colored.red("\nExiting...")
             print error_str
-            sys.exit(1)
+            #sys.exit(1)
     except TypeError, e:
         #print("Something's wrong...")
         table = None
@@ -636,7 +636,7 @@ def print_menu(arg=0):
 def searchAllSites(query=defaultQuery):
     global results, results_rarbg, results_sky
     results_rarbg = searchRarbg(query)
-    results = searchPirateBay(query)
+    results = searchPirateBay(query, domain='thepiratebay.unblocked.cool')
     results_sky = searchSkyTorrents(query)
 
 def printCombinedTopResults():
