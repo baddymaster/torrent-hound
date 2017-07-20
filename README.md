@@ -21,7 +21,7 @@ Download the `torrent-hound` binary from the `bin/` directory.
 `torrent-hound 'search-query'` or simply `torrent-hound`
 
 
-### Help
+### Menu
 Available Commands :
 
   1. `m<result number>` - Print magnet link of selected torrent   
@@ -34,3 +34,7 @@ Available Commands :
      `<choice>` : [{default : 1}, {0 : Print formatted result}, {1 : Pretty print results}]        
   7. `s` - Enter a new query to search for over all avilable torrent websites
   8. `r` - Repeat last search (with same query)
+
+
+### Help
+In case of an `SSL Error`, consult [these answers on Stackoverflow](https://stackoverflow.com/questions/31649390/python-requests-ssl-handshake-failure) for potential fixes.
