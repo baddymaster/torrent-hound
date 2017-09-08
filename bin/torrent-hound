@@ -636,7 +636,7 @@ def print_menu(arg=0):
 def searchAllSites(query=defaultQuery):
     global results, results_rarbg, results_sky
     results_rarbg = searchRarbg(query)
-    results = searchPirateBay(query, domain='thepiratebay.unblocked.cool')
+    results = searchPirateBay(query, domain='pirateproxy.cam')
     results_sky = searchSkyTorrents(query)
 
 def printCombinedTopResults():
