@@ -498,7 +498,7 @@ def pretty_print_top_results_piratebay(limit=10):
 
 def switch(arg):
     global results, exit, defaultQuery, num_results, query, num_results_rarbg, results_rarbg, print_version, tpb_working_domain
-    if 'c' in arg and ('s' and 'z') not in arg:
+    if ('c' in arg) and ('s' not in arg) and ('z' not in arg):
         try:
             resNum = int(re.search(r'\d+', arg).group())
             if resNum <= 0 or resNum > num_results_sky:
@@ -514,7 +514,7 @@ def switch(arg):
                 print 'Magnet link copied to clipboard!'
         except AttributeError:
             print 'Enter a valid torrent number as well!'
-    elif 'cs' in arg:
+    elif ('cs' in arg) and ('z' not in arg):
         try:
             resNum = int(re.search(r'\d+', arg).group())
             if resNum <= 0 or resNum > num_results_sky:
