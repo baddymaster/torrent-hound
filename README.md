@@ -28,12 +28,13 @@ Available Commands :
   2. `c<result number>` - Copy magnet link of selected torrent to clipboard
   3. `d<result number>` - Download torrent using default torrent client
   4. `o<result number>` - Open the torrent page of the selected torrent in the default browser
-  5. `cs<result number>` - Copy magnet link and open Seedr.cc  
-  6. `p<optional choice>` - Print top 10 results from each website for the given query
+  5. `cs<result number>` - Copy magnet link and open Seedr.cc
+  6. `cz<result number>` - Copy magnet link and open zbigz
+  7. `p<optional choice>` - Print top 10 results from each website for the given query
      
      `<choice>` : [{default : 1}, {0 : Print formatted result}, {1 : Pretty print results}]        
-  7. `s` - Enter a new query to search for over all avilable torrent websites
-  8. `r` - Repeat last search (with same query)
+  8. `s` - Enter a new query to search for over all avilable torrent websites
+  9. `r` - Repeat last search (with same query)
 
 
 ### Help
