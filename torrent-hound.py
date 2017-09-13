@@ -531,6 +531,23 @@ def switch(arg):
                 print 'Seedr.cc opened and Magnet link copied to clipboard!'
         except AttributeError:
             print 'Enter a valid torrent number as well!'
+    elif 'cz' in arg:
+        try:
+            resNum = int(re.search(r'\d+', arg).group())
+            if resNum <= 0 or resNum > num_results_sky:
+                print 'Invalid command!\n'
+            else:
+                if resNum <= num_results_rarbg :
+                    mLink = results_rarbg[resNum-1]['magnet']
+                elif resNum > num_results_rarbg and resNum <= num_results:
+                    mLink = results[(resNum-1)-num_results_rarbg]['magnet']
+                else:
+                    mLink = results_sky[(resNum-1)-num_results]['magnet']
+                pyperclip.copy(mLink)
+                webbrowser.open('https://zbigz.unihax.in/', new=2)
+                print 'zbigz opened and Magnet link copied to clipboard!'
+        except AttributeError:
+            print 'Enter a valid torrent number as well!'
     elif 'm' in arg:
         try:
             resNum = int(re.search(r'\d+', arg).group())
@@ -622,11 +639,12 @@ def print_menu(arg=0):
         2. c<result number> - Copy magnet link of selected torrent to clipboard
         3. d<result number> - Download torrent using default torrent client
         4. o<result number> - Open the torrent page of the selected torrent in the default browser
-        5. cs<result number> - Copy magnet link and open Seedr.cc
-        6. p[optional:<choice>] - Print top 10 results from each website for the given query
+        5. cs<result number> - Copy magnet link and open seedr.cc
+        6. cz<result number> - Copy magnet link and open zbigz
+        7. p[optional:<choice>] - Print top 10 results from each website for the given query
             <choice> : [{default : 1}, {0 : Print formatted result}, {1 : Pretty print results}]
-        7. s - Enter a new query to search for over all avilable torrent websites
-        8. r - Repeat last search (with same query)
+        8. s - Enter a new query to search for over all avilable torrent websites
+        9. r - Repeat last search (with same query)
         ------------------------'''
     elif arg == 1:
         print '''
