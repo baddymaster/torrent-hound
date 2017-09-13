@@ -212,7 +212,7 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.in', order
             #tds[0] -> Name, Magnet, Link
             res['name'] = tds[0].findAll("a")[0].contents[0].encode('utf-8')
             res['link'] = baseURL + tds[0].findAll("a")[0].attrs['href'].encode('utf-8')
-            res['magnet'] = tds[0].findAll("a")[2].attrs['href'].encode('utf-8')
+            res['magnet'] = tds[0].findAll("a")[1].attrs['href'].encode('utf-8')
             #tds[1] -> Size
             res['size'] = tds[1].contents[0].encode('utf-8')
             #tds[2] -> No. of files
@@ -230,9 +230,8 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.in', order
             results_sky.append(res)
 
     except Exception, e:
-        print("Oops...")
-        print(str(e))
-
+        print("Oops...Error while searching Skytorrents.")
+        print('ERR_MSG : ' + str(e))
     return results_sky
 
 def removeAndReplaceSpaces(str):
