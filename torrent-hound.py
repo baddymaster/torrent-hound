@@ -232,6 +232,7 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.in', order
     except Exception, e:
         print("Oops...Error while searching Skytorrents.")
         print('ERR_MSG : ' + str(e))
+
     return results_sky
 
 def removeAndReplaceSpaces(str):
@@ -307,7 +308,8 @@ def searchPirateBay(search_string=defaultQuery, page = 0, order_by = ORDER_BY.UP
                 error_str = colored.yellow("[PirateBay] Error : Connection to ") + colored.magenta(domain) + colored.yellow(" timed out.\n")
                 error_str += colored.red("Exiting. Try connecting via a proxy...")
                 print error_str
-                sys.exit(1)
+                table = None
+                #sys.exit(1)
         elif 'Connection refused' in err_string:
             if domain == 'thepiratebay.org':
                 tpb_working_domain = alternate_domain = 'piratebay.red'
@@ -319,7 +321,8 @@ def searchPirateBay(search_string=defaultQuery, page = 0, order_by = ORDER_BY.UP
                 error_str = colored.red("[PirateBay] Error : Connection to ") + (domain) + colored.red(" refused.\n")
                 error_str += colored.red("Exiting. Try connecting via a proxy...")
                 print error_str
-                sys.exit(1)
+                table = None
+                #sys.exit(1)
         elif 'failed to respond' in err_string:
             if domain == 'thepiratebay.org':
                 tpb_working_domain = alternate_domain = 'piratebay.red'
@@ -331,11 +334,13 @@ def searchPirateBay(search_string=defaultQuery, page = 0, order_by = ORDER_BY.UP
                 error_str = colored.red("[PirateBay] Error : Connection to ") + (domain) + colored.red(" refused.\n")
                 error_str += colored.red("Exiting. Try connecting via a proxy...")
                 print error_str
-                sys.exit(1)
+                table = None
+                #sys.exit(1)
         else:
             error_str = colored.red("[PirateBay] Unhandled Error : ") + colored.red(str(e)) + colored.red("\nExiting...")
             print error_str
-            sys.exit(1)
+            table = None
+            #sys.exit(1)
     except TypeError, e:
         #print("Something's wrong...")
         table = None
