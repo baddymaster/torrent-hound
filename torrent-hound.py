@@ -62,11 +62,17 @@ ORDER_BY_SKY = enum(RELEVANCE = 'ss',
                     OLDEST = 'aa')
 
 def generateNewTorrentAPIToken(error=False):
-    global auth_token
+    global auth_token, error_detected_rarbg
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
     refresh_url = 'https://torrentapi.org/pubapi_v2.php?get_token=get_token'
     try:
-        auth_token = json.loads(requests.get(refresh_url, headers=headers).text)['token'].encode('utf-8')
+        r = requests.get(refresh_url, headers=headers)
+        if(str(r).split()[1][1:4] != '200'):
+            print colored.red("HTTP Response Error : %s" % str(r))
+            error_detected_rarbg = True
+            return error_detected_rarbg
+
+        auth_token = json.loads(r.text)['token'].encode('utf-8')
         if error != False:
             success_string = '[RARBG] Success : Generated new token! '
             print colored.blue(success_string)
@@ -74,15 +80,19 @@ def generateNewTorrentAPIToken(error=False):
         err_string = str(e).split(',')[0]
         if 'Connection aborted' in err_string:
             print colored.red("Server cannot be reached. Check Internet connectivity!")
-            sys.exit(1)
-    except SysCallError, e:
-        print colored.red("SysCallError for RARBG search. Fix?")
+            #sys.exit(1)
+    
+    #except SysCallError, e:
+    #    print colored.red("SysCallError for RARBG search. Fix?")
 
 def searchRarbg(search_string=defaultQuery):
     global auth_token, results_rarbg, error_detected_rarbg
     # API Documentaion : https://torrentapi.org/apidocs_v2.txt
     # https://torrentapi.org/pubapi_v2.php?mode=search&search_string=Suits%20S06E10&format=json_extended&ranked=0&token=cy6xjhtmev
     generateNewTorrentAPIToken()
+    if error_detected_rarbg == True:
+        return results_rarbg
+
     search_string = search_string.replace(" ", "%20")
     base_url = 'https://torrentapi.org/pubapi_v2.php?'
     new_token = 'get_token=get_token'
@@ -171,7 +181,7 @@ def pretty_print_top_results_rarbg(limit=10):
     table_rarbg.field_names = [no_str, name_str, size_str, seed_str, leech_str, ratio_str]
 
     print '\n\t\t\t\t\t\t' + colored.green('RARBG')
-    if results_rarbg != []:
+    if (results_rarbg != []) and (results_rarbg != None):
         #print '{0} {1} {2} {3} {4} {5}'.format(colored.red('No.').ljust(3), colored.red('Torrent Name').ljust(60), colored.red('File Size').rjust(10), colored.red('Seeders').rjust(7), colored.red('Leechers').rjust(6), colored.red('Ratio').rjust(6))
         index = 1
         for r in results_rarbg[:limit]:
