@@ -64,7 +64,7 @@ ORDER_BY_SKY = enum(RELEVANCE = 'ss',
 def generateNewTorrentAPIToken(error=False):
     global auth_token, error_detected_rarbg
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
-    refresh_url = 'https://torrentapi.org/pubapi_v2.php?get_token=get_token'
+    refresh_url = 'https://torrentapi.org/pubapi_v2.php?get_token=get_token&app_id=0'
     try:
         r = requests.get(refresh_url, headers=headers)
         if(str(r).split()[1][1:4] != '200'):
@@ -73,6 +73,7 @@ def generateNewTorrentAPIToken(error=False):
             return error_detected_rarbg
 
         auth_token = json.loads(r.text)['token'].encode('utf-8')
+        #print auth_token
         if error != False:
             success_string = '[RARBG] Success : Generated new token! '
             print colored.blue(success_string)
@@ -88,19 +89,24 @@ def generateNewTorrentAPIToken(error=False):
 def searchRarbg(search_string=defaultQuery):
     global auth_token, results_rarbg, error_detected_rarbg
     # API Documentaion : https://torrentapi.org/apidocs_v2.txt
-    # https://torrentapi.org/pubapi_v2.php?mode=search&search_string=Suits%20S06E10&format=json_extended&ranked=0&token=cy6xjhtmev
+    # https://torrentapi.org/pubapi_v2.php?mode=search&search_string=Suits%20S06E10&format=json_extended&ranked=0&token=7dib9orxpa&app_id=0
+    # echo 'torrent-hound' | shasum -a 512
     generateNewTorrentAPIToken()
+    #print auth_token
     if error_detected_rarbg == True:
+        #print "Error detected!\n"
         return results_rarbg
 
     search_string = search_string.replace(" ", "%20")
     base_url = 'https://torrentapi.org/pubapi_v2.php?'
-    new_token = 'get_token=get_token'
+    new_token = 'get_token=get_token&app_id=0'
     search_criteria = 'mode=search&search_string=' + search_string + "&"
-    options = 'format=json_extended&ranked=0&token=' + auth_token
+    options = 'format=json_extended&ranked=0&token=' + auth_token + '&app_id=0'
     url = base_url + search_criteria + options
+    #print url
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
     response = requests.get(url, headers=headers)
+    #print response
     response_json = json.loads(response.text)
     #print response_json
     results_rarbg = []
@@ -182,6 +188,7 @@ def pretty_print_top_results_rarbg(limit=10):
 
     print '\n\t\t\t\t\t\t' + colored.green('RARBG')
     if (results_rarbg != []) and (results_rarbg != None):
+        #print 'Empty table'
         #print '{0} {1} {2} {3} {4} {5}'.format(colored.red('No.').ljust(3), colored.red('Torrent Name').ljust(60), colored.red('File Size').rjust(10), colored.red('Seeders').rjust(7), colored.red('Leechers').rjust(6), colored.red('Ratio').rjust(6))
         index = 1
         for r in results_rarbg[:limit]:
@@ -669,7 +676,7 @@ def searchAllSites(query=defaultQuery):
     global results, results_rarbg, results_sky
     results_rarbg = searchRarbg(query)
     results = searchPirateBay(query, domain='pirateproxy.cam')
-    results_sky = searchSkyTorrents(query)
+    #results_sky = searchSkyTorrents(query)
 
 def printCombinedTopResults():
     global num_results, num_results_rarbg
