@@ -209,11 +209,12 @@ def pretty_print_top_results_rarbg(limit=10):
         print table_rarbg
         return 0
 
-def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.in', order_by=ORDER_BY_SKY.RELEVANCE):
+def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', order_by=ORDER_BY_SKY.RELEVANCE):
     global results_sky
     search_string = removeAndReplaceSpaces(search_string)
     baseURL = 'https://' + domain
-    url = baseURL + '/search/all/' + order_by + '/1/?l=en-us&q=' + search_string
+    url = baseURL + '/?query=' + search_string
+    #url = baseURL + '/search/all/' + order_by + '/1/?l=en-us&q=' + search_string
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
     try:
         r = requests.get(url, headers=headers)
@@ -229,7 +230,7 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.in', order
             #tds[0] -> Name, Magnet, Link
             res['name'] = tds[0].findAll("a")[0].contents[0].encode('utf-8')
             res['link'] = baseURL + tds[0].findAll("a")[0].attrs['href'].encode('utf-8')
-            res['magnet'] = tds[0].findAll("a")[1].attrs['href'].encode('utf-8')
+            res['magnet'] = tds[0].findAll("a")[2].attrs['href'].encode('utf-8')
             #tds[1] -> Size
             res['size'] = tds[1].contents[0].encode('utf-8')
             #tds[2] -> No. of files
@@ -676,7 +677,7 @@ def searchAllSites(query=defaultQuery):
     global results, results_rarbg, results_sky
     results_rarbg = searchRarbg(query)
     results = searchPirateBay(query, domain='pirateproxy.cam')
-    #results_sky = searchSkyTorrents(query)
+    results_sky = searchSkyTorrents(query)
 
 def printCombinedTopResults():
     global num_results, num_results_rarbg
