@@ -15,6 +15,11 @@ Search torrents from multiple websites via the CLI
 Run `pip install -r requirements.txt` in the shell to install all dependencies
 
 
+### Update existing Intallation
+If installed via `git`, then simply run `git pull` in the shell after navigating to the `torrent-hound` directory
+Otherwise download the latest binary from the `releases` section of this repository
+
+
 ### Usage
 Download the `torrent-hound` binary from the `bin/` directory.
 
