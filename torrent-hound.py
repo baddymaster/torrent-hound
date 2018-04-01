@@ -32,6 +32,7 @@ import humanize
 
 defaultQuery, query = 'jason bourne', ''
 results_sky = None
+results_tpb_api, num_results_tpb_api = None, 0
 results, results_rarbg, exit, error_detected_rarbg, error_detected_tpb = None, None, None, None, None
 num_results, num_results_rarbg, num_results_sky, print_version = 0, 0, 0, 1
 auth_token = 'None'
@@ -50,6 +51,21 @@ ORDER_BY = enum(NAME = 1,
                 LEECHERS = 9,
                 TYPE = 13,
                 UPLOADED = 99)
+
+SORT_BY_TBP = enum(NAME = 'title_asc',
+                   NAME_DESC = 'title_desc',
+                   SEEDS = 'seeds_asc',
+                   SEEDS_DESC = 'seeds_desc',
+                   LEECHERS = 'leeches_asc',
+                   LEECHERS_DESC = 'leeches_desc',
+                   MOST_RECENT = 'time_desc',
+                   OLDEST = 'time_asc',
+                   UPLOADER = 'uploader_asc',
+                   UPLOADER_DESC = 'uploader_desc',
+                   SIZE = 'size_asc',
+                   SIZE_DESC = 'size_desc',
+                   FILE_TYPE = 'category_asc',
+                   FILE_TYPE_DESC = 'category_desc')
 
 ORDER_BY_SKY = enum(RELEVANCE = 'ss',
                     SEEDS_DESC = 'ed',
@@ -257,7 +273,7 @@ def removeAndReplaceSpaces(str):
     return str.replace(" ", "+")
 
 def pretty_print_top_results_skytorrents(limit=10):
-    global results_sky
+    global results_sky, num_results_tpb_api
     table_skytorrents = VeryPrettyTable(left_padding_width=0, right_padding_width=0, padding_width=0)
     no_str = str(colored.red('No'))
     name_str = str(colored.red('Torrent Name'))
@@ -272,7 +288,7 @@ def pretty_print_top_results_skytorrents(limit=10):
     print '\n\t\t\t\t\t\t' + colored.green('Sky Torrents')
     # print results
     if results_sky != [{}] and results_sky != [] and results_sky != None:
-        index = num_results + 1
+        index = num_results_tpb_api + 1
         for r in results_sky[:limit]:
             try :
                 table_skytorrents.add_row([index, r['name'][:57], r['size'], r['seeders'], r['leechers'], r['ratio']])
@@ -294,9 +310,9 @@ def pretty_print_top_results_skytorrents(limit=10):
         table_skytorrents.add_row(["Null", "Null", "Null", "Null", "Null", "Null"])
         #table_piratebay.align[colored.red('Torrent Name')] = 'l'
         print table_skytorrents
-        return num_results
+        return num_results_tpb_api
 
-def searchPirateBay(search_string=defaultQuery, page = 0, order_by = ORDER_BY.UPLOADER, domain='thepiratebay.org'):
+def searchPirateBay(search_string = defaultQuery, page = 0, order_by = ORDER_BY.UPLOADER, domain = 'thepiratebay.org'):
     """
     Searches for the given string in The Pirate Bay.
     Returns a list of dictionaries with the information of each torrent.
@@ -461,6 +477,53 @@ def _parse_search_result_table_row(tr):
         res['magnet'] = tds[1].find("img", {"alt": "Magnet link"}).parent['href']
         return res
 
+def searchPirateBayWithAPI(search_string = defaultQuery, sort_by = SORT_BY_TBP.SEEDS_DESC, domain = 'tpbc.herokuapp.com'):
+    global results_tpb_api
+    base_url = 'https://' + domain
+    url = base_url + '/search/' + search_string + '/?sort=' + sort_by
+
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
+    
+    try:
+        response = requests.get(url, headers=headers)
+        response_json = json.loads(response.text)
+    except Exception, e:
+        print colored.red("Oops...Error while searching PirateBay.")
+        print colored.red('ERR_MSG : ' + str(e))
+    
+    try:
+        results_tpb_api = parse_results_tpb_api(response_json)
+    except Exception, e:
+        print colored.red("Oops...Error while parsing PirateBay search results.")
+        print colored.red('ERR_MSG : ' + str(e))
+    
+    return results_tpb_api
+
+def parse_results_tpb_api(response_json):
+    #global results_tpb_api
+    results_list = []
+    if response_json == []:
+        error_string = '[PirateBay] Error : No results found'
+        print colored.yellow(error_string)
+        return []
+    else:
+        for post in response_json:
+            res = {}
+            res['name'] = post['title'].encode('utf-8')
+            res['link'] = ''
+            res['size'] = post['size'].encode('utf-8')
+            #res['time'] = Implement later
+            res['seeders'] = post['seeds'].encode('utf-8')
+            res['leechers'] = post['leechs'].encode('utf-8')
+            try:
+                res['ratio'] = format( (float(res['seeders'])/float(res['leechers'])), '.1f' )
+            except ZeroDivisionError:
+                res['ratio'] = float('inf')
+            res['magnet'] = post['magnet'].encode('utf-8')
+            results_list.append(res)
+    
+    return results_list
+
 def getQuery():
     global query
     query = raw_input('Enter search query : ')
@@ -489,8 +552,6 @@ def pretty_print_top_results_piratebay(limit=10):
     ratio_str = str(colored.red('S/L'))
     table_piratebay.field_names = [no_str, name_str, size_str, seed_str, leech_str, ratio_str]
 
-    #print '\n\t\t\t\t\t\t' + '+-----------+'
-    #print '\t\t\t\t\t\t| ' + colored.green('PirateBay') + ' |'
     print '\n\t\t\t\t\t\t' + colored.green('PirateBay')
     # print results
     if results != [{}] and results != [] and results != None:
@@ -518,8 +579,45 @@ def pretty_print_top_results_piratebay(limit=10):
         print table_piratebay
         return num_results_rarbg
 
+def pretty_print_top_results_piratebay_api(limit=10):
+    global results_tpb_api, num_results_rarbg
+    table_piratebay = VeryPrettyTable(left_padding_width=0, right_padding_width=0, padding_width=0)
+    no_str = str(colored.red('No'))
+    name_str = str(colored.red('Torrent Name'))
+    size_str = str(colored.red('Size'))
+    seed_str = str(colored.red('S'))
+    leech_str = str(colored.red('L'))
+    ratio_str = str(colored.red('S/L'))
+    table_piratebay.field_names = [no_str, name_str, size_str, seed_str, leech_str, ratio_str]
+
+    print '\n\t\t\t\t\t\t' + colored.green('PirateBay')
+    if results_tpb_api != [] and results_tpb_api != None:
+        index = num_results_rarbg + 1
+        for r in results_tpb_api[:limit]:
+            try :
+                table_piratebay.add_row([index, r['name'][:57], r['size'], r['seeders'], r['leechers'], r['ratio']])
+                index = index + 1
+            except KeyError, e:
+                # Fix error where {} is included in results and screws up numbering #
+                if r != {}:
+                    print r
+                    print e
+        table_piratebay.align[no_str] = 'l'
+        table_piratebay.align[name_str] = 'l'
+        table_piratebay.align[size_str] = 'r'
+        table_piratebay.align[seed_str] = 'r'
+        table_piratebay.align[leech_str] = 'r'
+        table_piratebay.align[ratio_str] = 'r'
+        print table_piratebay
+        return index - 1
+    else:
+        table_piratebay.add_row(["Null", "Null", "Null", "Null", "Null", "Null"])
+        #table_piratebay.align[colored.red('Torrent Name')] = 'l'
+        print table_piratebay
+        return num_results_rarbg
+
 def switch(arg):
-    global results, exit, defaultQuery, num_results, query, num_results_rarbg, results_rarbg, print_version, tpb_working_domain
+    global results, exit, defaultQuery, num_results, query, num_results_rarbg, results_rarbg, print_version, tpb_working_domain, results_tpb_api, num_results_tpb_api
     if ('c' in arg) and ('s' not in arg) and ('z' not in arg):
         try:
             resNum = int(re.search(r'\d+', arg).group())
@@ -528,10 +626,10 @@ def switch(arg):
             else:
                 if resNum <= num_results_rarbg :
                     mLink = results_rarbg[resNum-1]['magnet']
-                elif resNum > num_results_rarbg and resNum <= num_results:
-                    mLink = results[(resNum-1)-num_results_rarbg]['magnet']
+                elif resNum > num_results_rarbg and resNum <= num_results_tpb_api:
+                    mLink = results_tpb_api[(resNum-1)-num_results_rarbg]['magnet']
                 else:
-                    mLink = results_sky[(resNum-1)-num_results]['magnet']
+                    mLink = results_sky[(resNum-1)-num_results_tpb_api]['magnet']
                 pyperclip.copy(mLink)
                 print 'Magnet link copied to clipboard!'
         except AttributeError:
@@ -544,10 +642,10 @@ def switch(arg):
             else:
                 if resNum <= num_results_rarbg :
                     mLink = results_rarbg[resNum-1]['magnet']
-                elif resNum > num_results_rarbg and resNum <= num_results:
-                    mLink = results[(resNum-1)-num_results_rarbg]['magnet']
+                elif resNum > num_results_rarbg and resNum <= num_results_tpb_api:
+                    mLink = results_tpb_api[(resNum-1)-num_results_rarbg]['magnet']
                 else:
-                    mLink = results_sky[(resNum-1)-num_results]['magnet']
+                    mLink = results_sky[(resNum-1)-num_results_tpb_api]['magnet']
                 pyperclip.copy(mLink)
                 webbrowser.open('https://www.seedr.cc', new=2)
                 print 'Seedr.cc opened and Magnet link copied to clipboard!'
@@ -561,10 +659,10 @@ def switch(arg):
             else:
                 if resNum <= num_results_rarbg :
                     mLink = results_rarbg[resNum-1]['magnet']
-                elif resNum > num_results_rarbg and resNum <= num_results:
-                    mLink = results[(resNum-1)-num_results_rarbg]['magnet']
+                elif resNum > num_results_rarbg and resNum <= num_results_tpb_api:
+                    mLink = results_tpb_api[(resNum-1)-num_results_rarbg]['magnet']
                 else:
-                    mLink = results_sky[(resNum-1)-num_results]['magnet']
+                    mLink = results_sky[(resNum-1)-num_results_tpb_api]['magnet']
                 pyperclip.copy(mLink)
                 webbrowser.open('https://zbigz.unihax.in/', new=2)
                 print 'zbigz opened and Magnet link copied to clipboard!'
@@ -578,10 +676,10 @@ def switch(arg):
             else:
                 if resNum <= num_results_rarbg :
                     mLink = results_rarbg[resNum-1]['magnet']
-                elif resNum > num_results_rarbg and resNum <= num_results:
-                    mLink = results[(resNum-1)-num_results_rarbg]['magnet']
+                elif resNum > num_results_rarbg and resNum <= num_results_tpb_api:
+                    mLink = results_tpb_api[(resNum-1)-num_results_rarbg]['magnet']
                 else:
-                    mLink = results_sky[(resNum-1)-num_results]['magnet']
+                    mLink = results_sky[(resNum-1)-num_results_tpb_api]['magnet']
                 print "\nMagnet Link : \n" + mLink
         except AttributeError:
             print 'Enter a valid torrent number as well!'
@@ -593,10 +691,10 @@ def switch(arg):
             else:
                 if resNum <= num_results_rarbg :
                     mLink = results_rarbg[resNum-1]['magnet']
-                elif resNum > num_results_rarbg and resNum <= num_results:
-                    mLink = results[(resNum-1)-num_results_rarbg]['magnet']
+                elif resNum > num_results_rarbg and resNum <= num_results_tpb_api:
+                    mLink = results_tpb_api[(resNum-1)-num_results_rarbg]['magnet']
                 else:
-                    mLink = results_sky[(resNum-1)-num_results]['magnet']
+                    mLink = results_sky[(resNum-1)-num_results_tpb_api]['magnet']
                 webbrowser.open(mLink, new=2)
                 print 'Magnet link sent to default torrent client!'
         except AttributeError:
@@ -611,11 +709,11 @@ def switch(arg):
                 if resNum <= num_results_rarbg :
                     tLink = results_rarbg[resNum-1]['link']
                     #print("resNum(%d) <= num_results_rarbg(%d)" % (resNum, results_rarbg))
-                elif resNum > num_results_rarbg and resNum <= num_results:
-                    tLink = "https://" + tpb_working_domain + results[(resNum-1)-num_results_rarbg]['link']
+                elif resNum > num_results_rarbg and resNum <= num_results_tpb_api:
+                    tLink = "https://" + tpb_working_domain + results_tpb_api[(resNum-1)-num_results_rarbg]['link']
                     #print("resNum(%d) > num_results_rarbg(%d) and resNum(%d) <= (num_results_rarbg(%d)+num_results(%d))" % (resNum, num_results_rarbg, resNum, num_results_rarbg, num_results))
                 else:
-                    tLink = results_sky[(resNum-1)-num_results]['link']
+                    tLink = results_sky[(resNum-1)-num_results_tpb_api]['link']
                     #print("Reached SkyTorrents. Link : %s" % tLink)
                 #webbrowser.get('chrome').open(tLink, new=2)
                 webbrowser.open(tLink, new=2)
@@ -674,10 +772,11 @@ def print_menu(arg=0):
         '''
 
 def searchAllSites(query=defaultQuery):
-    global results, results_rarbg, results_sky
+    global results, results_rarbg, results_sky, results_tpb_api
     results_rarbg = searchRarbg(query)
     #results = searchPirateBay(query, domain='pirateproxy.cam')
-    results = searchPirateBay(query)
+    #results = searchPirateBay(query)
+    results_tpb_api = searchPirateBayWithAPI(query)
     results_sky = searchSkyTorrents(query)
 
 def printCombinedTopResults():
@@ -686,9 +785,10 @@ def printCombinedTopResults():
     num_results = print_top_results(10)
 
 def prettyPrintCombinedTopResults():
-    global num_results, num_results_rarbg, num_results_sky
+    global num_results, num_results_rarbg, num_results_sky, num_results_tpb_api
     num_results_rarbg = pretty_print_top_results_rarbg(10)
-    num_results = pretty_print_top_results_piratebay(10)
+    #num_results = pretty_print_top_results_piratebay(10)
+    num_results_tpb_api = pretty_print_top_results_piratebay_api(10)
     num_results_sky = pretty_print_top_results_skytorrents(10)
 
 def printTopResults(version=1):
