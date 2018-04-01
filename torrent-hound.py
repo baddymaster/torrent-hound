@@ -121,10 +121,18 @@ def searchRarbg(search_string=defaultQuery):
     url = base_url + search_criteria + options
     #print url
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
-    response = requests.get(url, headers=headers)
-    #print response
-    response_json = json.loads(response.text)
-    #print response_json
+    
+    try:
+        response = requests.get(url, headers=headers)
+        #print response
+        response_json = json.loads(response.text)
+        #print response_json
+    except ValueError, e:
+        print colored.red('[RARBG] Error : ' + str(e))
+        status_code = str(response).split()[1].strip('<[]>')
+        if status_code == '429': # Too Mant Requests
+            print colored.yellow('<HTTP 429> : Too Many Requests. Please try again after a while!')
+        return []
     results_rarbg = []
 
     error_detected_rarbg = checkResponseForErrors(response_json)
