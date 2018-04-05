@@ -529,10 +529,16 @@ def parse_results_tpb_api(response_json):
             res = {}
             res['name'] = post['title'].encode('utf-8')
             res['link'] = ''
-            res['size'] = post['size'].encode('utf-8')
+
+            temp_size = humanize.naturalsize(post['size'], binary=True, format='%.2f')
+            s1 = temp_size.split('.')
+            if(len(s1[0]) == 4):
+                res['size'] = humanize.naturalsize(post['size'], binary=True, format='%.0f')
+            else:
+                res['size'] = temp_size
             #res['time'] = Implement later
-            res['seeders'] = post['seeds'].encode('utf-8')
-            res['leechers'] = post['leechs'].encode('utf-8')
+            res['seeders'] = post['seeds']
+            res['leechers'] = post['leeches']
             try:
                 res['ratio'] = format( (float(res['seeders'])/float(res['leechers'])), '.1f' )
             except ZeroDivisionError:
