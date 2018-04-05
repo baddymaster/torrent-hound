@@ -29,6 +29,7 @@ import pyperclip
 import webbrowser
 import json
 import humanize
+import traceback
 
 defaultQuery, query = 'jason bourne', ''
 results_sky = None
@@ -145,8 +146,10 @@ def checkResponseForErrors(response_json):
     search_string = query.replace(" ", "%20")
 
     if 'error_code' in response_json:
-        error_string = '[RARBG] Error ' + str(response_json['error_code']) + " : " + response_json['error']
-        print colored.yellow(error_string)
+        #print 'In function'
+        error_string = '[RARBG] Error : ' + response_json['error']
+        print colored.magenta(error_string)
+        
         if response_json['error_code'] == 4:
             generateNewTorrentAPIToken(error=True)
             results_rarbg = searchRarbg(search_string)
@@ -243,9 +246,11 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', orde
     try:
         r = requests.get(url, headers=headers)
         soup = BeautifulSoup(r.content, "html.parser")
+        #print soup
         table = soup.find("table")
         results_sky = []
 
+        #print table
         trows = table.findAll("tr")
         del trows[:1]
         for trow in trows:
@@ -272,8 +277,11 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', orde
             results_sky.append(res)
 
     except Exception, e:
-        print("Oops...Error while searching Skytorrents.")
-        print('ERR_MSG : ' + str(e))
+        if table == None:
+            print colored.magenta("[SkyTorrents] Error : No results found")    
+        else:
+            print colored.red("[SkyTorrents] Error : Unkown problem while searching")
+            print colored.yellow('ERR_MSG : ' + str(e))
 
     return results_sky
 
@@ -495,15 +503,17 @@ def searchPirateBayWithAPI(search_string = defaultQuery, sort_by = SORT_BY_TBP.S
     try:
         response = requests.get(url, headers=headers)
         response_json = json.loads(response.text)
-    except Exception, e:
-        print colored.red("Oops...Error while searching PirateBay.")
-        print colored.red('ERR_MSG : ' + str(e))
-    
-    try:
         results_tpb_api = parse_results_tpb_api(response_json)
     except Exception, e:
-        print colored.red("Oops...Error while parsing PirateBay search results.")
-        print colored.red('ERR_MSG : ' + str(e))
+        print colored.red("[PirateBay] : Error while searching")
+        print colored.yellow('ERR_MSG : ' + str(e))
+        #traceback.print_exc()
+    
+    # try:
+    #     results_tpb_api = parse_results_tpb_api(response_json)
+    # except Exception, e:
+    #     print colored.red("[PirateBay] : Error while parsing search results.")
+    #     print colored.yellow('ERR_MSG : ' + str(e))
     
     return results_tpb_api
 
@@ -512,7 +522,7 @@ def parse_results_tpb_api(response_json):
     results_list = []
     if response_json == []:
         error_string = '[PirateBay] Error : No results found'
-        print colored.yellow(error_string)
+        print colored.magenta(error_string)
         return []
     else:
         for post in response_json:
