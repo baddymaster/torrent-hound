@@ -30,6 +30,8 @@ import webbrowser
 import json
 import humanize
 import traceback
+import random
+import time
 
 defaultQuery, query = 'jason bourne', ''
 results_sky = None
@@ -37,6 +39,7 @@ results_tpb_api, num_results_tpb_api = None, 0
 results, results_rarbg, exit, error_detected_rarbg, error_detected_tpb = None, None, None, None, None
 num_results, num_results_rarbg, num_results_sky, print_version = 0, 0, 0, 1
 auth_token = 'None'
+app_id = 'None'
 tpb_working_domain = 'thepiratebay.org'
 
 def enum(**enums):
@@ -79,9 +82,9 @@ ORDER_BY_SKY = enum(RELEVANCE = 'ss',
                     OLDEST = 'aa')
 
 def generateNewTorrentAPIToken(error=False):
-    global auth_token, error_detected_rarbg
+    global auth_token, error_detected_rarbg, app_id
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
-    refresh_url = 'https://torrentapi.org/pubapi_v2.php?get_token=get_token&app_id=0'
+    refresh_url = 'https://torrentapi.org/pubapi_v2.php?get_token=get_token&app_id=' + str(app_id)
     try:
         r = requests.get(refresh_url, headers=headers)
         if(str(r).split()[1][1:4] != '200'):
@@ -104,7 +107,7 @@ def generateNewTorrentAPIToken(error=False):
     #    print colored.red("SysCallError for RARBG search. Fix?")
 
 def searchRarbg(search_string=defaultQuery):
-    global auth_token, results_rarbg, error_detected_rarbg
+    global auth_token, results_rarbg, error_detected_rarbg, app_id
     # API Documentaion : https://torrentapi.org/apidocs_v2.txt
     # https://torrentapi.org/pubapi_v2.php?mode=search&search_string=Suits%20S06E10&format=json_extended&ranked=0&token=7dib9orxpa&app_id=0
     # echo 'torrent-hound' | shasum -a 512
@@ -116,9 +119,9 @@ def searchRarbg(search_string=defaultQuery):
 
     search_string = search_string.replace(" ", "%20")
     base_url = 'https://torrentapi.org/pubapi_v2.php?'
-    new_token = 'get_token=get_token&app_id=0'
+    new_token = 'get_token=get_token&app_id=' + str(app_id)
     search_criteria = 'mode=search&search_string=' + search_string + "&"
-    options = 'format=json_extended&ranked=0&token=' + auth_token + '&app_id=0'
+    options = 'format=json_extended&ranked=0&token=' + auth_token + '&app_id=' + str(app_id)
     url = base_url + search_criteria + options
     #print url
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
@@ -821,24 +824,13 @@ def printTopResults(version=1):
     elif version == 1:
         prettyPrintCombinedTopResults()
 
+def generateAppID(version=-1):
+    if version == 0: # Product of 3 random numbers
+        x, y, z = random.randint(1, 100), random.randint(1, 100), random.randint(1, 100)
+        app_id = x * y * z
+    else : # Hash current epoch time
+        epoch_time = time.time()
+        app_id = hash(epoch_time)
+    return app_id
+
 if __name__ == '__main__':
-    if len(sys.argv) == 1:
-        query = getQuery()
-        if query == '':
-            query = defaultQuery
-    else:
-        query = ''
-        for i in range(1,len(sys.argv)):
-            query = query + " " + sys.argv[i]
-        if query == '':
-            query = defaultQuery
-
-    print_version = 1
-    searchAllSites(query)
-    printTopResults(print_version)
-
-    exit = False
-    while(exit != True):
-        print_menu(1)
-        choice = raw_input("Enter command : ")
-        switch(choice)
