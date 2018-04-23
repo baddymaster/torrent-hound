@@ -126,12 +126,14 @@ def searchRarbg(search_string=defaultQuery):
     url = base_url + search_criteria + options
     rarbg_url = url
     #print url
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
+    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X x.y; rv:42.0) Gecko/20100101 Firefox/42.0'}
     
     try:
         response = requests.get(url, headers=headers)
-        #print response.text
-        response_json = json.loads(response.text)
+        #print response
+        rt = response.text
+        #print rt
+        response_json = json.loads(rt)
         #print response_json
     except ValueError, e:
         print colored.red('[RARBG] Error : ' + str(e))
