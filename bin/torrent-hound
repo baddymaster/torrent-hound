@@ -810,11 +810,32 @@ def print_menu(arg=0):
 
 def searchAllSites(query=defaultQuery):
     global results, results_rarbg, results_sky, results_tpb_api
-    results_rarbg = searchRarbg(query)
     #results = searchPirateBay(query, domain='pirateproxy.cam')
     #results = searchPirateBay(query)
-    results_tpb_api = searchPirateBayWithAPI(query)
-    results_sky = searchSkyTorrents(query)
+
+    if results_rarbg == None or results_rarbg == []:
+        results_rarbg = searchRarbg(query)
+    #     print 'R searching...'
+    # else:
+    #     print 'R not searching...'
+    # print 'Results R : '
+    # print results_rarbg
+
+    if results_tpb_api == None or results_tpb_api == []:
+        results_tpb_api = searchPirateBayWithAPI(query)
+    #     print 'P searching...'
+    # else:
+    #     print 'P not searching...'
+    # print 'Results P : '
+    # print results_tpb_api
+
+    if results_sky == None or results_sky == []:
+        results_sky = searchSkyTorrents(query)
+    #     print 'S searching...'
+    # else:
+    #     print 'S not searching...'
+    # print 'Results S : '
+    # print results_sky
 
 def printCombinedTopResults():
     global num_results, num_results_rarbg
