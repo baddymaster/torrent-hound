@@ -502,7 +502,7 @@ def _parse_search_result_table_row(tr):
 def searchPirateBayWithAPI(search_string = defaultQuery, sort_by = SORT_BY_TBP.SEEDS_DESC, domain = 'tpbc.herokuapp.com'):
     global results_tpb_api, tpb_url
     base_url = 'https://' + domain
-    url = base_url + '/search/' + search_string + '/?sort=' + sort_by
+    url = base_url + '/search/' + removeAndReplaceSpaces(search_string) + '/?sort=' + sort_by
     tpb_url = url
 
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
