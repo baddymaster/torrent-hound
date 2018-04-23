@@ -41,6 +41,7 @@ num_results, num_results_rarbg, num_results_sky, print_version = 0, 0, 0, 1
 auth_token = 'None'
 app_id = 'None'
 tpb_working_domain = 'thepiratebay.org'
+rarbg_url, skytorrents_url, tpb_url = '', '', ''
 
 def enum(**enums):
     """
@@ -107,7 +108,7 @@ def generateNewTorrentAPIToken(error=False):
     #    print colored.red("SysCallError for RARBG search. Fix?")
 
 def searchRarbg(search_string=defaultQuery):
-    global auth_token, results_rarbg, error_detected_rarbg, app_id
+    global auth_token, results_rarbg, error_detected_rarbg, app_id, rarbg_url
     # API Documentaion : https://torrentapi.org/apidocs_v2.txt
     # https://torrentapi.org/pubapi_v2.php?mode=search&search_string=Suits%20S06E10&format=json_extended&ranked=0&token=7dib9orxpa&app_id=0
     # echo 'torrent-hound' | shasum -a 512
@@ -123,18 +124,19 @@ def searchRarbg(search_string=defaultQuery):
     search_criteria = 'mode=search&search_string=' + search_string + "&"
     options = 'format=json_extended&ranked=0&token=' + auth_token + '&app_id=' + str(app_id)
     url = base_url + search_criteria + options
+    rarbg_url = url
     #print url
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
     
     try:
         response = requests.get(url, headers=headers)
-        #print response
+        #print response.text
         response_json = json.loads(response.text)
         #print response_json
     except ValueError, e:
         print colored.red('[RARBG] Error : ' + str(e))
         status_code = str(response).split()[1].strip('<[]>')
-        if status_code == '429': # Too Mant Requests
+        if status_code == '429': # Too Many Requests
             print colored.yellow('<HTTP 429> : Too Many Requests. Please try again after a while!')
         return []
     results_rarbg = []
@@ -240,10 +242,11 @@ def pretty_print_top_results_rarbg(limit=10):
         return 0
 
 def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', order_by=ORDER_BY_SKY.RELEVANCE):
-    global results_sky
+    global results_sky, skytorrents_url
     search_string = removeAndReplaceSpaces(search_string)
     baseURL = 'https://' + domain
     url = baseURL + '/?query=' + search_string
+    skytorrents_url = url
     #url = baseURL + '/search/all/' + order_by + '/1/?l=en-us&q=' + search_string
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
     try:
@@ -497,9 +500,10 @@ def _parse_search_result_table_row(tr):
         return res
 
 def searchPirateBayWithAPI(search_string = defaultQuery, sort_by = SORT_BY_TBP.SEEDS_DESC, domain = 'tpbc.herokuapp.com'):
-    global results_tpb_api
+    global results_tpb_api, tpb_url
     base_url = 'https://' + domain
     url = base_url + '/search/' + search_string + '/?sort=' + sort_by
+    tpb_url = url
 
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
     
@@ -644,7 +648,7 @@ def pretty_print_top_results_piratebay_api(limit=10):
         return num_results_rarbg
 
 def switch(arg):
-    global results, exit, defaultQuery, num_results, query, num_results_rarbg, results_rarbg, print_version, tpb_working_domain, results_tpb_api, num_results_tpb_api
+    global results, exit, defaultQuery, num_results, query, num_results_rarbg, results_rarbg, print_version, tpb_working_domain, results_tpb_api, num_results_tpb_api, rarbg_url, skytorrents_url, tpb_url
     if ('c' in arg) and ('s' not in arg) and ('z' not in arg):
         try:
             resNum = int(re.search(r'\d+', arg).group())
@@ -747,6 +751,10 @@ def switch(arg):
                 print 'Torrent page opened in default browser!'
         except AttributeError:
             print 'Enter a valid torrent number as well!'
+    elif arg == 'u':
+        print colored.green('[RARBG] URL') + ' : ' + rarbg_url
+        print colored.green('[PirateBay] URL') + ' : ' + tpb_url
+        print colored.green('[SkyTorrents] URL') + ' : ' + skytorrents_url
     elif arg == 'h':
         print_menu(0)
     elif arg == 'q':
