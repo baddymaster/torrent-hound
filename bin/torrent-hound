@@ -779,7 +779,7 @@ def switch(arg):
         query = raw_input("Enter query : ")
         if query == '':
             query = defaultQuery
-        searchAllSites(query)
+        searchAllSites(query, force_search=True)
         printTopResults(print_version)
     elif arg == 'r':
         searchAllSites(query)
@@ -808,10 +808,15 @@ def print_menu(arg=0):
         Enter 'q' to exit and 'h' to see all available commands.
         '''
 
-def searchAllSites(query=defaultQuery):
+def searchAllSites(query=defaultQuery, force_search=False):
     global results, results_rarbg, results_sky, results_tpb_api
     #results = searchPirateBay(query, domain='pirateproxy.cam')
     #results = searchPirateBay(query)
+
+    if force_search == True:
+        results_rarbg = None
+        results_tpb_api = None
+        results_sky = None
 
     if results_rarbg == None or results_rarbg == []:
         results_rarbg = searchRarbg(query)
