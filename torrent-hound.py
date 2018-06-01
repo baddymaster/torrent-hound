@@ -293,8 +293,10 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', orde
 
     return results_sky
 
-def removeAndReplaceSpaces(str):
-    return str.replace(" ", "+")
+def removeAndReplaceSpaces(string):
+    if string[0] == " ":
+        string = string[1:]
+    return string.replace(" ", "+")
 
 def pretty_print_top_results_skytorrents(limit=10):
     global results_sky, num_results_tpb_api
@@ -870,3 +872,24 @@ def generateAppID(version=-1):
     return app_id
 
 if __name__ == '__main__':
+    if len(sys.argv) == 1:
+        query = getQuery()
+        if query == '':
+            query = defaultQuery
+    else:
+        query = ''
+        for i in range(1,len(sys.argv)):
+            query = query + " " + sys.argv[i]
+        if query == '':
+            query = defaultQuery
+
+    print_version = 1
+    app_id = generateAppID()
+    searchAllSites(query)
+    printTopResults(print_version)
+
+    exit = False
+    while(exit != True):
+        print_menu(1)
+        choice = raw_input("Enter command : ")
+        switch(choice)
