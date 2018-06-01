@@ -293,8 +293,10 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', orde
 
     return results_sky
 
-def removeAndReplaceSpaces(str):
-    return str.replace(" ", "+")
+def removeAndReplaceSpaces(string):
+    if string[0] == " ":
+        string = string[1:]
+    return string.replace(" ", "+")
 
 def pretty_print_top_results_skytorrents(limit=10):
     global results_sky, num_results_tpb_api
