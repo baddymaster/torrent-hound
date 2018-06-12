@@ -829,7 +829,8 @@ def searchAllSites(query=defaultQuery, force_search=False):
     # print results_rarbg
 
     if results_tpb_api == None or results_tpb_api == []:
-        results_tpb_api = searchPirateBayWithAPI(query)
+        results_tpb_api = searchPirateBay(query)
+        #results_tpb_api = searchPirateBayWithAPI(query)
     #     print 'P searching...'
     # else:
     #     print 'P not searching...'
