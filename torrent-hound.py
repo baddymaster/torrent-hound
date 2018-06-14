@@ -42,6 +42,7 @@ auth_token = 'None'
 app_id = 'None'
 tpb_working_domain = 'thepiratebay.org'
 rarbg_url, skytorrents_url, tpb_url = '', '', ''
+tpb_retries, max_tpb_retries = 0, 3
 
 def enum(**enums):
     """
@@ -811,7 +812,7 @@ def print_menu(arg=0):
         '''
 
 def searchAllSites(query=defaultQuery, force_search=False):
-    global results, results_rarbg, results_sky, results_tpb_api
+    global results, results_rarbg, results_sky, results_tpb_api, tpb_retries, max_tpb_retries
     #results = searchPirateBay(query, domain='pirateproxy.cam')
     #results = searchPirateBay(query)
 
@@ -829,8 +830,11 @@ def searchAllSites(query=defaultQuery, force_search=False):
     # print results_rarbg
 
     if results_tpb_api == None or results_tpb_api == []:
-        results_tpb_api = searchPirateBay(query)
-        #results_tpb_api = searchPirateBayWithAPI(query)
+        if tpb_retries < max_tpb_retries:
+            results_tpb_api = searchPirateBayWithAPI(query)
+            tpb_retries += 1
+        else:
+            results_tpb_api = searchPirateBay(query)
     #     print 'P searching...'
     # else:
     #     print 'P not searching...'
