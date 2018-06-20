@@ -666,7 +666,7 @@ def switch(arg):
                     mLink = results_tpb_api[(resNum-1)-num_results_rarbg]['magnet']
                 else:
                     mLink = results_sky[(resNum-1)-num_results_tpb_api]['magnet']
-                pyperclip.copy(mLink)
+                pyperclip.copy(str(mLink))
                 print 'Magnet link copied to clipboard!'
         except AttributeError:
             print 'Enter a valid torrent number as well!'
@@ -682,7 +682,7 @@ def switch(arg):
                     mLink = results_tpb_api[(resNum-1)-num_results_rarbg]['magnet']
                 else:
                     mLink = results_sky[(resNum-1)-num_results_tpb_api]['magnet']
-                pyperclip.copy(mLink)
+                pyperclip.copy(str(mLink))
                 webbrowser.open('https://www.seedr.cc', new=2)
                 print 'Seedr.cc opened and Magnet link copied to clipboard!'
         except AttributeError:
@@ -699,7 +699,7 @@ def switch(arg):
                     mLink = results_tpb_api[(resNum-1)-num_results_rarbg]['magnet']
                 else:
                     mLink = results_sky[(resNum-1)-num_results_tpb_api]['magnet']
-                pyperclip.copy(mLink)
+                pyperclip.copy(str(mLink))
                 webbrowser.open('https://zbigz.unihax.in/', new=2)
                 print 'zbigz opened and Magnet link copied to clipboard!'
         except AttributeError:
