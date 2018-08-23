@@ -32,6 +32,7 @@ import humanize
 import traceback
 import random
 import time
+import argparse
 
 defaultQuery, query = 'jason bourne', ''
 results_sky = None
@@ -877,24 +878,33 @@ def generateAppID(version=-1):
     return app_id
 
 if __name__ == '__main__':
-    if len(sys.argv) == 1:
-        query = getQuery()
-        if query == '':
-            query = defaultQuery
+    # initiate the parser
+    parser = argparse.ArgumentParser()  
+
+    # add arguments
+    parser.add_argument("query", help="Specify the search query", nargs='+', default=defaultQuery)
+    parser.add_argument('-q', '--quiet', help='Print output of search without any additional options', default=False, action='store_true')
+
+    # read arguments from the command line
+    args = parser.parse_args()
+
+    if args.query:  
+        #print("The query is :  %s\n" % (' '.join(args.query)))
+        print_version = 1
+        app_id = generateAppID()
+        query = ' '.join(args.query) # converts args from list to string
+        searchAllSites(query)
     else:
-        query = ''
-        for i in range(1,len(sys.argv)):
-            query = query + " " + sys.argv[i]
-        if query == '':
-            query = defaultQuery
+        print("Please enter a valid query.")
+        sys.exit(0)
 
-    print_version = 1
-    app_id = generateAppID()
-    searchAllSites(query)
-    printTopResults(print_version)
-
-    exit = False
-    while(exit != True):
-        print_menu(1)
-        choice = raw_input("Enter command : ")
-        switch(choice)
+    if args.quiet: # Continue in non-interactive mode
+        print("Result will be printed quiety...")
+    else: # Continue in interactive mode
+        printTopResults(print_version)
+        
+        exit = False
+        while(exit != True):
+            print_menu(1)
+            choice = raw_input("Enter command : ")
+            switch(choice)
