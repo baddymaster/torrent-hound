@@ -109,7 +109,7 @@ def generateNewTorrentAPIToken(error=False):
     #except SysCallError, e:
     #    print colored.red("SysCallError for RARBG search. Fix?")
 
-def searchRarbg(search_string=defaultQuery):
+def searchRarbg(search_string=defaultQuery, quiet_mode=False):
     global auth_token, results_rarbg, error_detected_rarbg, app_id, rarbg_url
     # API Documentaion : https://torrentapi.org/apidocs_v2.txt
     # https://torrentapi.org/pubapi_v2.php?mode=search&search_string=Suits%20S06E10&format=json_extended&ranked=0&token=7dib9orxpa&app_id=0
@@ -138,10 +138,11 @@ def searchRarbg(search_string=defaultQuery):
         response_json = json.loads(rt)
         #print response_json
     except ValueError, e:
-        print colored.red('[RARBG] Error : ' + str(e))
-        status_code = str(response).split()[1].strip('<[]>')
-        if status_code == '429': # Too Many Requests
-            print colored.yellow('<HTTP 429> : Too Many Requests. Please try again after a while!')
+        if quiet_mode == False:
+            print colored.red('[RARBG] Error : ' + str(e))
+            status_code = str(response).split()[1].strip('<[]>')
+            if status_code == '429': # Too Many Requests
+                print colored.yellow('<HTTP 429> : Too Many Requests. Please try again after a while!')
         return []
     results_rarbg = []
 
@@ -245,7 +246,7 @@ def pretty_print_top_results_rarbg(limit=10):
         print table_rarbg
         return 0
 
-def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', order_by=ORDER_BY_SKY.RELEVANCE):
+def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', order_by=ORDER_BY_SKY.RELEVANCE, quiet_mode=False):
     global results_sky, skytorrents_url
     search_string = removeAndReplaceSpaces(search_string)
     baseURL = 'https://' + domain
@@ -287,11 +288,12 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', orde
             results_sky.append(res)
 
     except Exception, e:
-        if table == None:
-            print colored.magenta("[SkyTorrents] Error : No results found")    
-        else:
-            print colored.red("[SkyTorrents] Error : Unkown problem while searching")
-            print colored.yellow('ERR_MSG : ' + str(e))
+        if quiet_mode == False:
+            if table == None:
+                print colored.magenta("[SkyTorrents] Error : No results found")    
+            else:
+                print colored.red("[SkyTorrents] Error : Unkown problem while searching")
+                print colored.yellow('ERR_MSG : ' + str(e))
 
     return results_sky
 
@@ -340,7 +342,7 @@ def pretty_print_top_results_skytorrents(limit=10):
         print table_skytorrents
         return num_results_tpb_api
 
-def searchPirateBay(search_string = defaultQuery, page = 0, order_by = ORDER_BY.UPLOADER, domain = 'thepiratebay.org'):
+def searchPirateBay(search_string = defaultQuery, page = 0, order_by = ORDER_BY.UPLOADER, domain = 'thepiratebay.org', quiet_mode=False):
     """
     Searches for the given string in The Pirate Bay.
     Returns a list of dictionaries with the information of each torrent.
@@ -364,12 +366,14 @@ def searchPirateBay(search_string = defaultQuery, page = 0, order_by = ORDER_BY.
                 tpb_working_domain = alternate_domain ='piratebay.red'
                 error_str = colored.yellow("[PirateBay] Error : Connection to ") + colored.magenta(domain) + colored.yellow(" timed out.\n")
                 error_str += colored.yellow("Trying to connect via ") + colored.magenta(alternate_domain) + colored.yellow("...")
-                print error_str
+                if quiet_mode == False:
+                    print error_str
                 return searchPirateBay(search_string=search_string, domain='piratebay.red')
             elif domain == 'piratebay.red':
                 error_str = colored.yellow("[PirateBay] Error : Connection to ") + colored.magenta(domain) + colored.yellow(" timed out.\n")
                 error_str += colored.red("Exiting. Try connecting via a proxy...")
-                print error_str
+                if quiet_mode == False:
+                    print error_str
                 table = None
                 #sys.exit(1)
         elif 'Connection refused' in err_string:
@@ -377,12 +381,14 @@ def searchPirateBay(search_string = defaultQuery, page = 0, order_by = ORDER_BY.
                 tpb_working_domain = alternate_domain = 'piratebay.red'
                 error_str = colored.red("[PirateBay] Error : Connection to ") + (domain) + colored.red(" refused.\n")
                 error_str += colored.red("Trying to connect via ") + (alternate_domain) + colored.red("...")
-                print error_str
+                if quiet_mode == False:
+                    print error_str
                 return searchPirateBay(search_string=search_string, domain='piratebay.red')
             elif domain == 'piratebay.red':
                 error_str = colored.red("[PirateBay] Error : Connection to ") + (domain) + colored.red(" refused.\n")
                 error_str += colored.red("Exiting. Try connecting via a proxy...")
-                print error_str
+                if quiet_mode == False:
+                    print error_str
                 table = None
                 #sys.exit(1)
         elif 'failed to respond' in err_string:
@@ -390,17 +396,20 @@ def searchPirateBay(search_string = defaultQuery, page = 0, order_by = ORDER_BY.
                 tpb_working_domain = alternate_domain = 'piratebay.red'
                 error_str = colored.red("[PirateBay] Error : Connection to ") + (domain) + colored.red(" is probably blocked.\n")
                 error_str += colored.red("Trying to connect via ") + (alternate_domain) + colored.red("...")
-                print error_str
+                if quiet_mode == False:
+                    print error_str
                 return searchPirateBay(search_string=search_string, domain='piratebay.red')
             elif domain == 'piratebay.red':
                 error_str = colored.red("[PirateBay] Error : Connection to ") + (domain) + colored.red(" refused.\n")
                 error_str += colored.red("Exiting. Try connecting via a proxy...")
-                print error_str
+                if quiet_mode == False:
+                    print error_str
                 table = None
                 #sys.exit(1)
         else:
             error_str = colored.red("[PirateBay] Unhandled Error : ") + colored.red(str(e)) + colored.red("\nExiting...")
-            print error_str
+            if quiet_mode == False:
+                print error_str
             table = None
             #sys.exit(1)
     except TypeError, e:
@@ -411,19 +420,21 @@ def searchPirateBay(search_string = defaultQuery, page = 0, order_by = ORDER_BY.
     if table == None:
         if domain == 'piratebay.red':
             error_string = str(colored.yellow('[PirateBay] Error : No results found. ')) + str(colored.magenta(domain)) + str(colored.yellow(' might be unreachable!'))
-            print error_string
-            return _parse_search_result_table(table)
+            if quiet_mode == False:
+                print error_string
+            return _parse_search_result_table(table, quiet_mode)
         else:
             tpb_working_domain = alternate_domain = 'piratebay.red'
             # print "!!!!"
             error_string = str(colored.yellow('[PirateBay] Error  : No results found. ')) + str(colored.magenta(domain)) + str(colored.yellow(' might be unreachable!'))
             error_string += str(colored.yellow('\nTrying ')) + str(colored.magenta(alternate_domain)) + str(colored.yellow('...'))
-            print (error_string)
+            if quiet_mode == False:
+                print (error_string)
             return searchPirateBay(search_string=search_string, domain='piratebay.red')
     else:
-        return _parse_search_result_table(table)
+        return _parse_search_result_table(table, quiet_mode=quiet_mode)
 
-def _parse_search_result_table(table):
+def _parse_search_result_table(table, quiet_mode=False):
     if table == None:
         results = []
         return results
@@ -438,7 +449,8 @@ def _parse_search_result_table(table):
             results.append(_parse_search_result_table_row(tr))
         else:
             error_string = '[PirateBay] Error  : No results found'
-            print colored.yellow(error_string)
+            if quiet_mode == False:
+                print colored.yellow(error_string)
             break
     return results
 
@@ -505,7 +517,7 @@ def _parse_search_result_table_row(tr):
         res['magnet'] = tds[1].find("img", {"alt": "Magnet link"}).parent['href']
         return res
 
-def searchPirateBayWithAPI(search_string = defaultQuery, sort_by = SORT_BY_TBP.SEEDS_DESC, domain = 'tpbc.herokuapp.com'):
+def searchPirateBayWithAPI(search_string = defaultQuery, sort_by = SORT_BY_TBP.SEEDS_DESC, domain = 'tpbc.herokuapp.com', quiet_mode=False):
     global results_tpb_api, tpb_url
     base_url = 'https://' + domain
     url = base_url + '/search/' + removeAndReplaceSpaces(search_string) + '/?sort=' + sort_by
@@ -518,8 +530,9 @@ def searchPirateBayWithAPI(search_string = defaultQuery, sort_by = SORT_BY_TBP.S
         response_json = json.loads(response.text)
         results_tpb_api = parse_results_tpb_api(response_json)
     except Exception, e:
-        print colored.red("[PirateBay] : Error while searching")
-        print colored.yellow('ERR_MSG : ' + str(e))
+        if quiet_mode == False :
+            print colored.red("[PirateBay] : Error while searching")
+            print colored.yellow('ERR_MSG : ' + str(e))
         #traceback.print_exc()
     
     # try:
@@ -812,7 +825,7 @@ def print_menu(arg=0):
         Enter 'q' to exit and 'h' to see all available commands.
         '''
 
-def searchAllSites(query=defaultQuery, force_search=False):
+def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
     global results, results_rarbg, results_sky, results_tpb_api, tpb_retries, max_tpb_retries
     #results = searchPirateBay(query, domain='pirateproxy.cam')
     #results = searchPirateBay(query)
@@ -823,7 +836,7 @@ def searchAllSites(query=defaultQuery, force_search=False):
         results_sky = None
 
     if results_rarbg == None or results_rarbg == []:
-        results_rarbg = searchRarbg(query)
+        results_rarbg = searchRarbg(query, quiet_mode=quiet_mode)
     #     print 'R searching...'
     # else:
     #     print 'R not searching...'
@@ -832,10 +845,10 @@ def searchAllSites(query=defaultQuery, force_search=False):
 
     if results_tpb_api == None or results_tpb_api == []:
         if tpb_retries < max_tpb_retries:
-            results_tpb_api = searchPirateBayWithAPI(query)
+            results_tpb_api = searchPirateBayWithAPI(query, quiet_mode=quiet_mode)
             tpb_retries += 1
         else:
-            results_tpb_api = searchPirateBay(query)
+            results_tpb_api = searchPirateBay(query, quiet_mode=quiet_mode)
     #     print 'P searching...'
     # else:
     #     print 'P not searching...'
@@ -843,7 +856,7 @@ def searchAllSites(query=defaultQuery, force_search=False):
     # print results_tpb_api
 
     if results_sky == None or results_sky == []:
-        results_sky = searchSkyTorrents(query)
+        results_sky = searchSkyTorrents(query, quiet_mode=quiet_mode)
     #     print 'S searching...'
     # else:
     #     print 'S not searching...'
@@ -867,6 +880,41 @@ def printTopResults(version=1):
         printCombinedTopResults()
     elif version == 1:
         prettyPrintCombinedTopResults()
+
+def convertListJSONToPureJSON(result_list): 
+    # Sample JSON Structure
+    # { 
+    #  'count' : x,    ### Gives total number of results
+    #  'results' : {'0' : {...}, {'1' : {...}, ...}   ### Stores actual results
+    # }
+    result_json = {'count' : 0}
+    index = 0
+
+    if result_list != []: # Create a key 'results' only if there are some results
+        result_json['results'] = {}
+        rj_results = result_json['results']
+    
+    for item in result_list:
+        rj_results[index] = result_list[index]
+        index += 1
+    result_json['count'] = index # Update total number of results
+
+    return result_json
+
+def printResultsQuietly():
+    global results_rarbg, results_tpb_api, results_sky
+
+    results_json_rarbg = convertListJSONToPureJSON(results_rarbg)
+    results_json_tpb = convertListJSONToPureJSON(results_tpb_api)
+    results_json_sky = convertListJSONToPureJSON(results_sky)
+    #print results_json_tpb
+
+    combined_json_results = {}
+    combined_json_results['rarbg'] = results_json_rarbg
+    combined_json_results['tpb'] = results_json_tpb
+    combined_json_results['sky'] = results_json_sky
+
+    print combined_json_results
 
 def generateAppID(version=-1):
     if version == 0: # Product of 3 random numbers
@@ -893,14 +941,16 @@ if __name__ == '__main__':
         print_version = 1
         app_id = generateAppID()
         query = ' '.join(args.query) # converts args from list to string
-        searchAllSites(query)
     else:
         print("Please enter a valid query.")
         sys.exit(0)
 
     if args.quiet: # Continue in non-interactive mode
-        print("Result will be printed quiety...")
+        #print("Result will be printed quiety...")
+        searchAllSites(query, quiet_mode=True)
+        printResultsQuietly()
     else: # Continue in interactive mode
+        searchAllSites(query) # quiet_mode is off by default
         printTopResults(print_version)
         
         exit = False
