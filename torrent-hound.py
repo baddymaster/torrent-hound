@@ -195,7 +195,7 @@ def parse_results_rarbg(response_json, quiet_mode=False):
             try:
                 res['ratio'] = format( (float(res['seeders'])/float(res['leechers'])), '.1f' )
             except ZeroDivisionError:
-                res['ratio'] = float('inf')
+                res['ratio'] = 'inf'
             res['magnet'] = post['download']
             results_rarbg.append(res)
     else:
@@ -289,7 +289,7 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', orde
             try:
                 res['ratio'] = format( (float(res['seeders'])/float(res['leechers'])), '.1f' )
             except ZeroDivisionError:
-                res['ratio'] = float('inf')
+                res['ratio'] = 'inf'
             results_sky.append(res)
 
     except Exception, e:
@@ -518,7 +518,7 @@ def _parse_search_result_table_row(tr):
         try:
             res['ratio'] = format( (float(res['seeders'])/float(res['leechers'])), '.1f' )
         except ZeroDivisionError:
-            res['ratio'] = float('inf')
+            res['ratio'] = 'inf'
         res['magnet'] = tds[1].find("img", {"alt": "Magnet link"}).parent['href']
         return res
 
@@ -560,7 +560,7 @@ def parse_results_tpb_api(response_json, quiet_mode=False):
         for post in response_json:
             res = {}
             res['name'] = post['title'].encode('utf-8')
-            res['link'] = ''
+            #res['link'] = ''
 
             temp_size = humanize.naturalsize(post['size'], binary=True, format='%.2f')
             s1 = temp_size.split('.')
@@ -574,7 +574,7 @@ def parse_results_tpb_api(response_json, quiet_mode=False):
             try:
                 res['ratio'] = format( (float(res['seeders'])/float(res['leechers'])), '.1f' )
             except ZeroDivisionError:
-                res['ratio'] = float('inf')
+                res['ratio'] = 'inf'
             res['magnet'] = post['magnet'].encode('utf-8')
             results_list.append(res)
     
@@ -893,7 +893,7 @@ def convertListJSONToPureJSON(result_list):
     #  'count' : x,    ### Gives total number of results
     #  'results' : {'0' : {...}, {'1' : {...}, ...}   ### Stores actual results
     # }
-    result_json = {'count' : 0}
+    result_json = {'count' : '0'}
     index = 0
 
     if result_list != []: # Create a key 'results' only if there are some results
@@ -901,9 +901,9 @@ def convertListJSONToPureJSON(result_list):
         rj_results = result_json['results']
     
     for item in result_list:
-        rj_results[index] = result_list[index]
+        rj_results[str(index)] = result_list[index]
         index += 1
-    result_json['count'] = index # Update total number of results
+    result_json['count'] = str(index) # Update total number of results
 
     return result_json
 
