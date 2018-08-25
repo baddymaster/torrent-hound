@@ -84,14 +84,15 @@ ORDER_BY_SKY = enum(RELEVANCE = 'ss',
                     NEWEST = 'ad',
                     OLDEST = 'aa')
 
-def generateNewTorrentAPIToken(error=False):
+def generateNewTorrentAPIToken(error=False, quiet_mode=False):
     global auth_token, error_detected_rarbg, app_id
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
     refresh_url = 'https://torrentapi.org/pubapi_v2.php?get_token=get_token&app_id=' + str(app_id)
     try:
         r = requests.get(refresh_url, headers=headers)
         if(str(r).split()[1][1:4] != '200'):
-            print colored.red("HTTP Response Error : %s" % str(r))
+            if quiet_mode == False:
+                print colored.red("HTTP Response Error : %s" % str(r))
             error_detected_rarbg = True
             return error_detected_rarbg
 
@@ -99,11 +100,13 @@ def generateNewTorrentAPIToken(error=False):
         #print auth_token
         if error != False:
             success_string = '[RARBG] Success : Generated new token! '
-            print colored.blue(success_string)
+            if quiet_mode == False:
+                print colored.blue(success_string)
     except requests.exceptions.ConnectionError, e:
         err_string = str(e).split(',')[0]
         if 'Connection aborted' in err_string:
-            print colored.red("Server cannot be reached. Check Internet connectivity!")
+            if quiet_mode == False:
+                print colored.red("Server cannot be reached. Check Internet connectivity!")
             #sys.exit(1)
     
     #except SysCallError, e:
@@ -114,7 +117,7 @@ def searchRarbg(search_string=defaultQuery, quiet_mode=False):
     # API Documentaion : https://torrentapi.org/apidocs_v2.txt
     # https://torrentapi.org/pubapi_v2.php?mode=search&search_string=Suits%20S06E10&format=json_extended&ranked=0&token=7dib9orxpa&app_id=0
     # echo 'torrent-hound' | shasum -a 512
-    generateNewTorrentAPIToken()
+    generateNewTorrentAPIToken(quiet_mode=quiet_mode)
     #print auth_token
     if error_detected_rarbg == True:
         #print "Error detected!\n"
@@ -146,19 +149,20 @@ def searchRarbg(search_string=defaultQuery, quiet_mode=False):
         return []
     results_rarbg = []
 
-    error_detected_rarbg = checkResponseForErrors(response_json)
+    error_detected_rarbg = checkResponseForErrors(response_json, quiet_mode=quiet_mode)
     if(error_detected_rarbg == False):
-        results_rarbg = parse_results_rarbg(response_json)
+        results_rarbg = parse_results_rarbg(response_json, quiet_mode=quiet_mode)
     return results_rarbg
 
-def checkResponseForErrors(response_json):
+def checkResponseForErrors(response_json, quiet_mode=False):
     global results_rarbg, error_detected_rarbg, query, auth_token
     search_string = query.replace(" ", "%20")
 
     if 'error_code' in response_json:
         #print 'In function'
         error_string = '[RARBG] Error : ' + response_json['error']
-        print colored.magenta(error_string)
+        if quiet_mode == False:
+            print colored.magenta(error_string)
         
         if response_json['error_code'] == 4:
             generateNewTorrentAPIToken(error=True)
@@ -169,7 +173,7 @@ def checkResponseForErrors(response_json):
     else:
         return False #No errors. Print results
 
-def parse_results_rarbg(response_json):
+def parse_results_rarbg(response_json, quiet_mode=False):
     global results_rarbg
     if error_detected_rarbg == False:
         for post in response_json['torrent_results']:
@@ -195,8 +199,9 @@ def parse_results_rarbg(response_json):
             res['magnet'] = post['download']
             results_rarbg.append(res)
     else:
-        print "----------- " + colored.green('RARBG') + " -----------"
-        print "             [No results found]                "
+        if quiet_mode == False:
+            print "----------- " + colored.green('RARBG') + " -----------"
+            print "             [No results found]                "
         return []
     return results_rarbg
 
@@ -528,7 +533,7 @@ def searchPirateBayWithAPI(search_string = defaultQuery, sort_by = SORT_BY_TBP.S
     try:
         response = requests.get(url, headers=headers)
         response_json = json.loads(response.text)
-        results_tpb_api = parse_results_tpb_api(response_json)
+        results_tpb_api = parse_results_tpb_api(response_json, quiet_mode=quiet_mode)
     except Exception, e:
         if quiet_mode == False :
             print colored.red("[PirateBay] : Error while searching")
@@ -543,12 +548,13 @@ def searchPirateBayWithAPI(search_string = defaultQuery, sort_by = SORT_BY_TBP.S
     
     return results_tpb_api
 
-def parse_results_tpb_api(response_json):
+def parse_results_tpb_api(response_json, quiet_mode=False):
     #global results_tpb_api
     results_list = []
     if response_json == []:
-        error_string = '[PirateBay] Error : No results found'
-        print colored.magenta(error_string)
+        if quiet_mode == False:
+            error_string = '[PirateBay] Error : No results found'
+            print colored.magenta(error_string)
         return []
     else:
         for post in response_json:
