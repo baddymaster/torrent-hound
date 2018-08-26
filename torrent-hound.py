@@ -896,14 +896,14 @@ def convertListJSONToPureJSON(result_list):
     result_json = {'count' : '0'}
     index = 0
 
-    if result_list != []: # Create a key 'results' only if there are some results
+    if result_list != [] and result_list != None: # Create a key 'results' only if there are some results
         result_json['results'] = {}
         rj_results = result_json['results']
     
-    for item in result_list:
-        rj_results[str(index)] = result_list[index]
-        index += 1
-    result_json['count'] = str(index) # Update total number of results
+        for item in result_list:
+            rj_results[str(index)] = result_list[index]
+            index += 1
+        result_json['count'] = str(index) # Update total number of results
 
     return result_json
 
