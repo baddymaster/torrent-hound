@@ -840,6 +840,7 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
         results_rarbg = None
         results_tpb_api = None
         results_sky = None
+        results = None
 
     if results_rarbg == None or results_rarbg == []:
         results_rarbg = searchRarbg(query, quiet_mode=quiet_mode)
@@ -855,11 +856,15 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
             tpb_retries += 1
         else:
             results_tpb_api = searchPirateBay(query, quiet_mode=quiet_mode)
+
     #     print 'P searching...'
     # else:
     #     print 'P not searching...'
     # print 'Results P : '
     # print results_tpb_api
+    
+    # if results == None or results == []:
+    #     results = searchPirateBay(query, quiet_mode=quiet_mode)
 
     if results_sky == None or results_sky == []:
         results_sky = searchSkyTorrents(query, quiet_mode=quiet_mode)
