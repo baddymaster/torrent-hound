@@ -295,7 +295,7 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', orde
 
     except Exception, e:
         if quiet_mode == False:
-            if table == None:
+            if tbody == None:
                 print colored.magenta("[SkyTorrents] Error : No results found")    
             else:
                 print colored.red("[SkyTorrents] Error : Unkown problem while searching")
