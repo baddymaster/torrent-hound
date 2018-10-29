@@ -259,22 +259,23 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', orde
     skytorrents_url = url
     #url = baseURL + '/search/all/' + order_by + '/1/?l=en-us&q=' + search_string
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
+    #headers = {'User-Agent': 'Mozilla/5.0'}
     try:
         r = requests.get(url, headers=headers)
         soup = BeautifulSoup(r.content, "html.parser")
         #print soup
-        table = soup.find("table")
+        tbody = soup.find('tbody')
         results_sky = []
 
-        #print table
-        trows = table.findAll("tr")
-        del trows[:1]
+        trows = tbody.findAll("tr")
+        #print trows
         for trow in trows:
             res = {}
             tds = trow.findAll("td")
             #tds[0] -> Name, Magnet, Link
             res['name'] = tds[0].findAll("a")[0].contents[0].encode('utf-8')
-            res['link'] = baseURL + tds[0].findAll("a")[0].attrs['href'].encode('utf-8')
+            res['link'] = baseURL + '/' + tds[0].findAll("a")[0].attrs['href'].encode('utf-8')
+            
             res['magnet'] = tds[0].findAll("a")[2].attrs['href'].encode('utf-8')
             #tds[1] -> Size
             res['size'] = tds[1].contents[0].encode('utf-8')
