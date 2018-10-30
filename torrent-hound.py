@@ -284,9 +284,9 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', orde
             #tds[3] -> Date added
             # res['date'] = tds[3].contents[0].encode('utf-8')
             #tds[4] -> Seeders
-            res['seeders'] = tds[4].contents[0].encode('utf-8')
+            res['seeders'] = tds[4].contents[0].encode('utf-8').replace(',', '')
             #tds[5] -> Leechers
-            res['leechers'] = tds[5].contents[0].encode('utf-8')
+            res['leechers'] = tds[5].contents[0].encode('utf-8').replace(',', '')
             try:
                 res['ratio'] = format( (float(res['seeders'])/float(res['leechers'])), '.1f' )
             except ZeroDivisionError:
@@ -354,9 +354,10 @@ def searchPirateBay(search_string = defaultQuery, page = 0, order_by = ORDER_BY.
     Searches for the given string in The Pirate Bay.
     Returns a list of dictionaries with the information of each torrent.
     """
-    global tpb_working_domain
+    global tpb_working_domain, tpb_url
     baseURL = 'https://' + domain + '/s/?q='
     url = baseURL + removeAndReplaceSpaces(search_string) + '&page=0&orderby=99'
+    tpb_url = url
     #print url
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
     try:
