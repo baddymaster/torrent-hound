@@ -464,7 +464,9 @@ def _parse_search_result_table(table, quiet_mode=False):
     return results
 
 def _parse_search_result_table_row(tr):
-    global error_detected_tpb
+    global error_detected_tpb, tpb_working_domain
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
+    
     res = {}
     tds = tr.findAll("td")
     #print tds
@@ -525,6 +527,19 @@ def _parse_search_result_table_row(tr):
         except ZeroDivisionError:
             res['ratio'] = 'inf'
         res['magnet'] = tds[1].find("img", {"alt": "Magnet link"}).parent['href']
+
+        # Check if magnet link was found on this page, or if need to go one level deeper
+        if res['magnet'] == res['link']: # Magnet link not found
+            magnet_link_page = 'https://' + tpb_working_domain + res['link']
+            #print magnet_link_page
+            try:
+                magnet_req = requests.get(magnet_link_page, headers=headers)
+                soup2 = BeautifulSoup(magnet_req.content, "html.parser")
+                content = soup2.find_all(class_='download')
+                res['magnet'] = content[0].contents[1].attrs['href'].encode('utf-8')
+            except Exception, e:
+                print colored.red("[PirateBay] Error : Unkown problem while searching for magnet link")
+                print colored.yellow('ERR_MSG : ' + str(e))
         #print res
         return res
 
