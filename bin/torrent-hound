@@ -41,7 +41,7 @@ results, results_rarbg, exit, error_detected_rarbg, error_detected_tpb = None, N
 num_results, num_results_rarbg, num_results_sky, print_version = 0, 0, 0, 1
 auth_token = 'None'
 app_id = 'None'
-tpb_working_domain = 'thepiratebay.org'
+tpb_working_domain = 'tpb.tw'
 rarbg_url, skytorrents_url, tpb_url = '', '', ''
 tpb_retries, max_tpb_retries = 0, 3
 
