@@ -173,10 +173,11 @@ def checkResponseForErrors(response_json, quiet_mode=False):
     else:
         return False #No errors. Print results
 
-def parse_results_rarbg(response_json, quiet_mode=False):
+def parse_results_rarbg(response_json, quiet_mode=False, limit=10):
     global results_rarbg
     if error_detected_rarbg == False:
-        for post in response_json['torrent_results']:
+        #print len(response_json['torrent_results'])
+        for post in response_json['torrent_results'][:limit]:
             res = {}
             res['name'] = post['title']
             res['link'] = post['info_page']
