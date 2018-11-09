@@ -494,7 +494,7 @@ def _parse_search_result_table_row(tr):
                 s2 = s1[1].split(' ')
             except IndexError, e: # Special case where size is an integer (eg. s1 = 2 GiB), i.e, no decimal place
                 #print 'Reached here'
-                s1 = s1.split(' ')
+                s1 = s1[0].split(' ')
                 #print s1
                 s2 = ['0']
                 s2.append(s1[1])
