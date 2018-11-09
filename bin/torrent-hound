@@ -443,7 +443,7 @@ def searchPirateBay(search_string = defaultQuery, page = 0, order_by = ORDER_BY.
     else:
         return _parse_search_result_table(table, quiet_mode=quiet_mode)
 
-def _parse_search_result_table(table, quiet_mode=False):
+def _parse_search_result_table(table, quiet_mode=False, limit=10):
     if table == None:
         results = []
         return results
@@ -453,7 +453,11 @@ def _parse_search_result_table(table, quiet_mode=False):
     # print trs
     results = []
     error_detected_tpb = False
-    for tr in trs:
+    index = 1
+    for tr in trs[:limit]:
+        #print index
+        #print tr
+        index += 1
         if(error_detected_tpb == False):
             results.append(_parse_search_result_table_row(tr))
         else:
@@ -472,9 +476,10 @@ def _parse_search_result_table_row(tr):
     #print tds
     
     link_name = tds[1].find("a", {"class": "detLink"})
-    # print "Link Name : " + str(link_name.contents)
+    #print "Link Name : " + str(link_name.contents)
     if link_name.contents == []:
         error_detected_tpb = True
+        #print error_detected_tpb
         return {}
     else:
         res['name'] = link_name.contents[0].encode('utf-8').strip()
@@ -484,10 +489,13 @@ def _parse_search_result_table_row(tr):
         try :
             temp_size = str(m.group(3)).replace('\xc2\xa0', ' ')
             s1 = temp_size.split('.')
+            #print s1
             try:
                 s2 = s1[1].split(' ')
             except IndexError, e: # Special case where size is an integer (eg. s1 = 2 GiB), i.e, no decimal place
+                #print 'Reached here'
                 s1 = s1.split(' ')
+                #print s1
                 s2 = ['0']
                 s2.append(s1[1])
                 temp_size = s1[0] + '.0 ' + s1[1]
@@ -498,6 +506,7 @@ def _parse_search_result_table_row(tr):
             else:
                 res['size'] = temp_size
         except AttributeError, e:
+            #print 'Reached here next'
             error_detected_tpb = True
             #print e
             #print "\nRegex misbehaving. Try running the script again!\n"
@@ -633,8 +642,12 @@ def pretty_print_top_results_piratebay(limit=10):
     # print results
     if results != [{}] and results != [] and results != None:
         index = num_results_rarbg + 1
+        #print index
+        #print len(results)
         for r in results[:limit]:
             try :
+                #print index
+                #print r
                 table_piratebay.add_row([index, r['name'][:57], r['size'], r['seeders'], r['leechers'], r['ratio']])
                 index = index + 1
             except KeyError, e:
