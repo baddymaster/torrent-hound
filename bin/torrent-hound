@@ -251,7 +251,7 @@ def pretty_print_top_results_rarbg(limit=10):
         print table_rarbg
         return 0
 
-def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', order_by=ORDER_BY_SKY.RELEVANCE, quiet_mode=False):
+def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', order_by=ORDER_BY_SKY.RELEVANCE, quiet_mode=False, limit=10):
     global results_sky, skytorrents_url
     search_string = removeAndReplaceSpaces(search_string)
     baseURL = 'https://' + domain
@@ -268,8 +268,8 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', orde
         results_sky = []
 
         trows = tbody.findAll("tr")
-        #print trows
-        for trow in trows:
+        #print len(trows)
+        for trow in trows[:limit]:
             res = {}
             tds = trow.findAll("td")
             #tds[0] -> Name, Magnet, Link
