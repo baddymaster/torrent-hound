@@ -4,3 +4,4 @@ clint
 pyperclip
 humanize
 VeryPrettyTable
+cfscrape

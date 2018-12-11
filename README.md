@@ -9,6 +9,7 @@ Search torrents from multiple websites via the CLI
 - pyperclip
 - humanize
 - VeryPrettyTable
+- cfscrape
 
 
 ### Installation
