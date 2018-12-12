@@ -261,6 +261,7 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', orde
     skytorrents_url = url
     #url = baseURL + '/search/all/' + order_by + '/1/?l=en-us&q=' + search_string
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
+    tbody = None
     #headers = {'User-Agent': 'Mozilla/5.0'}
     try:
         scraper = cfs.create_scraper()
