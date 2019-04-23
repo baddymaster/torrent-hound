@@ -279,6 +279,23 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', orde
             #tds[0] -> Name, Magnet, Link
             res['name'] = tds[0].findAll("a")[0].contents[0].encode('utf-8')
             res['link'] = baseURL + '/' + tds[0].findAll("a")[0].attrs['href'].encode('utf-8')
+
+            if tds[0].findAll("img")[0].attrs['src'] == '/files/thumb_upm.png' and tds[0].findAll("img")[1].attrs['src'] == '/files/thumb_downm.png':
+                # Both upvotes and downvotes found
+                res['up'] = '{:+}'.format(int(tds[0].contents[2]))
+                res['down'] = '{:+}'.format(int(tds[0].contents[4]))
+            elif tds[0].findAll("img")[0].attrs['src'] == '/files/thumb_upm.png':
+                # Only upvotes, no downvotes found
+                res['up'] = '{:+}'.format(int(tds[0].contents[2]))
+                res['down'] = '0'
+            elif tds[0].findAll("img")[0].attrs['src'] == '/files/thumb_downm.png':
+                # Only downvotes, no upvotes found
+                res['up'] = '0'
+                res['down'] = '{:+}'.format(int(tds[0].contents[2]))
+            else:
+                # No upvotes or downvotes found
+                res['up'] = '0'
+                res['down'] = '0'
             
             res['magnet'] = tds[0].findAll("a")[2].attrs['href'].encode('utf-8')
             #tds[1] -> Size
@@ -321,7 +338,8 @@ def pretty_print_top_results_skytorrents(limit=10):
     seed_str = str(colored.red('S'))
     leech_str = str(colored.red('L'))
     ratio_str = str(colored.red('S/L'))
-    table_skytorrents.field_names = [no_str, name_str, size_str, seed_str, leech_str, ratio_str]
+    votes_str = str(colored.red('Votes'))
+    table_skytorrents.field_names = [no_str, name_str, size_str, seed_str, leech_str, ratio_str, votes_str]
 
     #print '\n\t\t\t\t\t\t' + '+-----------+'
     #print '\t\t\t\t\t\t| ' + colored.green('PirateBay') + ' |'
@@ -332,7 +350,7 @@ def pretty_print_top_results_skytorrents(limit=10):
         index = num_results + 1
         for r in results_sky[:limit]:
             try :
-                table_skytorrents.add_row([index, r['name'][:57], r['size'], r['seeders'], r['leechers'], r['ratio']])
+                table_skytorrents.add_row([index, r['name'][:57], r['size'], r['seeders'], r['leechers'], r['ratio'], (r['up'] + '/' + r['down'])])
                 index = index + 1
             except KeyError, e:
                 # Fix error where {} is included in results and screws up numbering #
@@ -345,10 +363,11 @@ def pretty_print_top_results_skytorrents(limit=10):
         table_skytorrents.align[seed_str] = 'r'
         table_skytorrents.align[leech_str] = 'r'
         table_skytorrents.align[ratio_str] = 'r'
+        table_skytorrents.align[votes_str] = 'c'
         print table_skytorrents
         return index - 1
     else:
-        table_skytorrents.add_row(["Null", "Null", "Null", "Null", "Null", "Null"])
+        table_skytorrents.add_row(["Null", "Null", "Null", "Null", "Null", "Null", "Null"])
         #table_piratebay.align[colored.red('Torrent Name')] = 'l'
         print table_skytorrents
         return num_results
