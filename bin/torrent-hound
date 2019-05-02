@@ -651,7 +651,7 @@ def print_top_results(limit=10):
         return index - 1
 
 def pretty_print_top_results_piratebay(limit=10):
-    global results
+    global results, num_results_rarbg
     table_piratebay = VeryPrettyTable(left_padding_width=0, right_padding_width=0, padding_width=0)
     no_str = str(colored.red('No'))
     name_str = str(colored.red('Torrent Name'))
@@ -955,12 +955,14 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
     # print 'Results R : '
     # print results_rarbg
 
-    # if results_tpb_api == None or results_tpb_api == []:
-    #     if tpb_retries < max_tpb_retries:
-    #         results_tpb_api = searchPirateBayWithAPI(query, quiet_mode=quiet_mode)
-    #         tpb_retries += 1
-    #     else:
-    #         results_tpb_api = searchPirateBay(query, quiet_mode=quiet_mode)
+    if results_tpb_api == None or results_tpb_api == []:
+        if tpb_retries < max_tpb_retries:
+            results_tpb_api = searchPirateBayWithAPI(query, quiet_mode=quiet_mode)
+            results = results_tpb_api
+            tpb_retries += 1
+        else:
+            results_tpb_api = searchPirateBay(query, quiet_mode=quiet_mode)
+            results = results_tpb_api
 
     #     print 'P searching...'
     # else:
@@ -968,10 +970,10 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
     # print 'Results P : '
     # print results_tpb_api
     
-    if results == None or results == []:
-        tpb_working_domain = 'tpb.tw'
-        results = searchPirateBay(query, quiet_mode=quiet_mode, domain='tpb.tw')
-        #print results
+    # if results == None or results == []:
+    #     tpb_working_domain = 'tpb.tw'
+    #     results = searchPirateBay(query, quiet_mode=quiet_mode, domain='tpb.tw')
+    #     #print results
 
     if results_sky == None or results_sky == []:
         results_sky = searchSkyTorrents(query, quiet_mode=quiet_mode)
@@ -989,8 +991,10 @@ def printCombinedTopResults():
 def prettyPrintCombinedTopResults():
     global num_results, num_results_rarbg, num_results_sky, num_results_tpb_api
     num_results_rarbg = pretty_print_top_results_rarbg(10)
-    num_results = pretty_print_top_results_piratebay(10)
-    #num_results_tpb_api = pretty_print_top_results_piratebay_api(10)
+    #num_results = pretty_print_top_results_piratebay(10)
+    num_results_tpb_api = pretty_print_top_results_piratebay_api(10)
+    num_results = num_results_tpb_api
+
     num_results_sky = pretty_print_top_results_skytorrents(10)
 
 def printTopResults(version=1):
