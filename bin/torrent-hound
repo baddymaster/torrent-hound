@@ -855,6 +855,7 @@ def switch(arg, tpb_api=False):
     elif 'o' in arg:
         try:
             resNum = int(re.search(r'\d+', arg).group())
+            #re.search('r\d+', 'r1').group()
             #print("resNum : %d" % resNum)
             if resNum <= 0 or resNum > num_results_sky:
                 print 'Invalid command!\n'
@@ -873,7 +874,9 @@ def switch(arg, tpb_api=False):
                     if resNum <= num_results_rarbg :
                         tLink = results_rarbg[resNum-1]['link']
                     elif resNum > num_results_rarbg and resNum <= num_results:
-                        tLink = "https://" + tpb_working_domain + results[(resNum-1)-num_results_rarbg]['link']
+                        #tLink = "https://" + tpb_working_domain + results[(resNum-1)-num_results_rarbg]['link']
+                        tLink = results[(resNum-1)-num_results_rarbg]['link']
+                        #print(tLink)
                     else:
                         tLink = results_sky[(resNum-1)-num_results]['link']
                 #webbrowser.get('chrome').open(tLink, new=2)
@@ -955,14 +958,14 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
     # print 'Results R : '
     # print results_rarbg
 
-    if results_tpb_api == None or results_tpb_api == []:
-        if tpb_retries < max_tpb_retries:
-            results_tpb_api = searchPirateBayWithAPI(query, quiet_mode=quiet_mode)
-            results = results_tpb_api
-            tpb_retries += 1
-        else:
-            results_tpb_api = searchPirateBay(query, quiet_mode=quiet_mode)
-            results = results_tpb_api
+    # if results_tpb_api == None or results_tpb_api == []:
+    #     if tpb_retries < max_tpb_retries:
+    #         results_tpb_api = searchPirateBayWithAPI(query, quiet_mode=quiet_mode)
+    #         results = results_tpb_api
+    #         tpb_retries += 1
+    #     else:
+    #         results_tpb_api = searchPirateBay(query, quiet_mode=quiet_mode)
+    #         results = results_tpb_api
 
     #     print 'P searching...'
     # else:
@@ -970,10 +973,10 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
     # print 'Results P : '
     # print results_tpb_api
     
-    # if results == None or results == []:
-    #     tpb_working_domain = 'tpb.tw'
-    #     results = searchPirateBay(query, quiet_mode=quiet_mode, domain='tpb.tw')
-    #     #print results
+    if results == None or results == []:
+        tpb_working_domain = 'thepiratebay.zone'
+        results = searchPirateBay(query, quiet_mode=quiet_mode, domain=tpb_working_domain)
+        #print results
 
     if results_sky == None or results_sky == []:
         results_sky = searchSkyTorrents(query, quiet_mode=quiet_mode)
@@ -991,9 +994,9 @@ def printCombinedTopResults():
 def prettyPrintCombinedTopResults():
     global num_results, num_results_rarbg, num_results_sky, num_results_tpb_api
     num_results_rarbg = pretty_print_top_results_rarbg(10)
-    #num_results = pretty_print_top_results_piratebay(10)
-    num_results_tpb_api = pretty_print_top_results_piratebay_api(10)
-    num_results = num_results_tpb_api
+    num_results = pretty_print_top_results_piratebay(10)
+    #num_results_tpb_api = pretty_print_top_results_piratebay_api(10)
+    #num_results = num_results_tpb_api
 
     num_results_sky = pretty_print_top_results_skytorrents(10)
 
