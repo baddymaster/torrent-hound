@@ -125,7 +125,7 @@ def searchRarbg(search_string=defaultQuery, quiet_mode=False):
         return results_rarbg
 
     search_string = search_string.replace(" ", "%20")
-    base_url = 'https://torrentapi.org/pubapi_v2.php?'
+    base_url = 'http://torrentapi.org/pubapi_v2.php?'
     new_token = 'get_token=get_token&app_id=' + str(app_id)
     search_criteria = 'mode=search&search_string=' + search_string + "&"
     options = 'format=json_extended&ranked=0&token=' + auth_token + '&app_id=' + str(app_id)
