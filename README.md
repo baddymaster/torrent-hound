@@ -3,7 +3,7 @@ Search torrents from multiple websites via the CLI
 
 
 ### Requirements
-- Python 2.7
+- Python 3
 - bs4
 - clint
 - pyperclip

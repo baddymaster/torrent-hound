@@ -1,9 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # @author : Yashovardhan Sharma
 # @github : github.com/baddymaster
 
 #   <Torrent Hound - Search torrents from multiple websites via the CLI.>
-#    Copyright (C) <2017>  <Yashovardhan Sharma>
+#    Copyright (C) <2023>  <Yashovardhan Sharma>
 #
 #     This program is free software: you can redistribute it and/or modify
 #     it under the terms of the GNU Affero General Public License as published
@@ -18,6 +18,9 @@
 #     You should have received a copy of the GNU Affero General Public License
 #     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import print_function
+from builtins import input
+from builtins import str
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from clint.textui import colored
@@ -34,9 +37,11 @@ import random
 import time
 import argparse
 import cfscrape as cfs
+import traceback
 
 defaultQuery, query = 'jason bourne', ''
 results_sky = None
+results_tpb_condensed = None
 results_tpb_api, num_results_tpb_api = None, 0
 results, results_rarbg, exit, error_detected_rarbg, error_detected_tpb = None, None, None, None, None
 num_results, num_results_rarbg, num_results_sky, print_version = 0, 0, 0, 1
@@ -87,27 +92,33 @@ ORDER_BY_SKY = enum(RELEVANCE = 'ss',
 
 def generateNewTorrentAPIToken(error=False, quiet_mode=False):
     global auth_token, error_detected_rarbg, app_id
+    
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
+    headers_safari = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15'}
     refresh_url = 'https://torrentapi.org/pubapi_v2.php?get_token=get_token&app_id=' + str(app_id)
+    
+    #print(f"App ID: {app_id}")
+    #print(f"Token Refresh URL: {refresh_url}")
     try:
-        r = requests.get(refresh_url, headers=headers)
+        r = requests.get(refresh_url, headers=headers_safari)
         if(str(r).split()[1][1:4] != '200'):
             if quiet_mode == False:
-                print colored.red("HTTP Response Error : %s" % str(r))
+                print(colored.red("HTTP Response Error : %s" % str(r)))
             error_detected_rarbg = True
             return error_detected_rarbg
 
-        auth_token = json.loads(r.text)['token'].encode('utf-8')
-        #print auth_token
+        auth_token = json.loads(r.text)['token']
+        #print(f"Auth Token: {auth_token}")
+
         if error != False:
             success_string = '[RARBG] Success : Generated new token! '
             if quiet_mode == False:
-                print colored.blue(success_string)
-    except requests.exceptions.ConnectionError, e:
+                print(colored.blue(success_string))
+    except requests.exceptions.ConnectionError as e:
         err_string = str(e).split(',')[0]
         if 'Connection aborted' in err_string:
             if quiet_mode == False:
-                print colored.red("Server cannot be reached. Check Internet connectivity!")
+                print(colored.red("Server cannot be reached. Check Internet connectivity!"))
             #sys.exit(1)
     
     #except SysCallError, e:
@@ -119,34 +130,42 @@ def searchRarbg(search_string=defaultQuery, quiet_mode=False):
     # https://torrentapi.org/pubapi_v2.php?mode=search&search_string=Suits%20S06E10&format=json_extended&ranked=0&token=7dib9orxpa&app_id=0
     # echo 'torrent-hound' | shasum -a 512
     generateNewTorrentAPIToken(quiet_mode=quiet_mode)
-    #print auth_token
+    #print(f"Auth Token: {auth_token}")
     if error_detected_rarbg == True:
         #print "Error detected!\n"
         return results_rarbg
 
+    #print(f"Auth token: {auth_token.decode('utf-8')}\n")
     search_string = search_string.replace(" ", "%20")
-    base_url = 'http://torrentapi.org/pubapi_v2.php?'
+    base_url = 'https://torrentapi.org/pubapi_v2.php?'
     new_token = 'get_token=get_token&app_id=' + str(app_id)
     search_criteria = 'mode=search&search_string=' + search_string + "&"
-    options = 'format=json_extended&ranked=0&token=' + auth_token + '&app_id=' + str(app_id)
+    options = 'format=json_extended&ranked=0&token=' + str(auth_token) + '&app_id=' + str(app_id)
     url = base_url + search_criteria + options
     rarbg_url = url
-    #print url
+    #print(f"RARBG Search URL: {url}")
+
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X x.y; rv:42.0) Gecko/20100101 Firefox/42.0'}
-    
+    # User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15
+    headers_safari = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15'}
+
     try:
-        response = requests.get(url, headers=headers)
-        #print response
+        response = requests.get(url, headers=headers_safari)
+        #print(f"Response: {response}")
         rt = response.text
-        #print rt
+        #print(f"Response Text: {rt}\n")
         response_json = json.loads(rt)
         #print response_json
-    except ValueError, e:
+    except Exception as e:
         if quiet_mode == False:
-            print colored.red('[RARBG] Error : ' + str(e))
             status_code = str(response).split()[1].strip('<[]>')
             if status_code == '429': # Too Many Requests
-                print colored.yellow('<HTTP 429> : Too Many Requests. Please try again after a while!')
+                print(colored.yellow('<HTTP 429> : Too Many Requests. Please try again after a while!'))
+                print(colored.red('[RARBG] Error : ' + str(e)))
+            else:
+                print(colored.red('[RARBG] Error : ' + str(e)))
+            #traceback.print_exc()
+            
         return []
     results_rarbg = []
 
@@ -163,7 +182,7 @@ def checkResponseForErrors(response_json, quiet_mode=False):
         #print 'In function'
         error_string = '[RARBG] Error : ' + response_json['error']
         if quiet_mode == False:
-            print colored.magenta(error_string)
+            print(colored.magenta(error_string))
         
         if response_json['error_code'] == 4:
             generateNewTorrentAPIToken(error=True)
@@ -202,21 +221,21 @@ def parse_results_rarbg(response_json, quiet_mode=False, limit=10):
             results_rarbg.append(res)
     else:
         if quiet_mode == False:
-            print "----------- " + colored.green('RARBG') + " -----------"
-            print "             [No results found]                "
+            print("----------- " + colored.green('RARBG') + " -----------")
+            print("             [No results found]                ")
         return []
     return results_rarbg
 
 def print_top_results_rarbg(limit=10):
     global results_rarbg
     if results_rarbg != [] and results_rarbg != None:
-        print '\n---------------------------------------------- ' + colored.green('RARBG') + ' ----------------------------------------------'
-        print '{0} {1} {2} {3} {4} {5}'.format(colored.red('No.').ljust(3), colored.red('Torrent Name').ljust(60), colored.red('File Size').rjust(10), colored.red('Seeders').rjust(7), colored.red('Leechers').rjust(6), colored.red('Ratio').rjust(6))
+        print('\n---------------------------------------------- ' + colored.green('RARBG') + ' ----------------------------------------------')
+        print('{0} {1} {2} {3} {4} {5}'.format(colored.red('No.').ljust(3), colored.red('Torrent Name').ljust(60), colored.red('File Size').rjust(10), colored.red('Seeders').rjust(7), colored.red('Leechers').rjust(6), colored.red('Ratio').rjust(6)))
         index = 1
         for r in results_rarbg[:limit]:
-            print '{0} {1} {2} {3} {4} {5}'.format(str(index).ljust(3), r['name'][:60].ljust(60), r['size'].rjust(10), str(r['seeders']).rjust(6), str(r['leechers']).rjust(6), str(r['ratio']).rjust(8))
+            print('{0} {1} {2} {3} {4} {5}'.format(str(index).ljust(3), r['name'][:60].ljust(60), r['size'].rjust(10), str(r['seeders']).rjust(6), str(r['leechers']).rjust(6), str(r['ratio']).rjust(8)))
             index = index + 1
-        print "---------------------------------------------------------------------------------------------------"
+        print("---------------------------------------------------------------------------------------------------")
         return index - 1
 
 def pretty_print_top_results_rarbg(limit=10):
@@ -230,7 +249,7 @@ def pretty_print_top_results_rarbg(limit=10):
     ratio_str = str(colored.red('S/L'))
     table_rarbg.field_names = [no_str, name_str, size_str, seed_str, leech_str, ratio_str]
 
-    print '\n\t\t\t\t\t\t' + colored.green('RARBG')
+    print('\n\t\t\t\t\t\t' + colored.green('RARBG'))
     if (results_rarbg != []) and (results_rarbg != None):
         #print 'Empty table'
         #print '{0} {1} {2} {3} {4} {5}'.format(colored.red('No.').ljust(3), colored.red('Torrent Name').ljust(60), colored.red('File Size').rjust(10), colored.red('Seeders').rjust(7), colored.red('Leechers').rjust(6), colored.red('Ratio').rjust(6))
@@ -245,12 +264,12 @@ def pretty_print_top_results_rarbg(limit=10):
         table_rarbg.align[seed_str] = 'r'
         table_rarbg.align[leech_str] = 'r'
         table_rarbg.align[ratio_str] = 'r'
-        print table_rarbg
+        print(table_rarbg)
         return index - 1
     else:
         table_rarbg.add_row(["Null", "Null", "Null", "Null", "Null", "Null"])
         table_rarbg.align[colored.red('Torrent Name')] = 'l'
-        print table_rarbg
+        print(table_rarbg)
         return 0
 
 def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', order_by=ORDER_BY_SKY.RELEVANCE, quiet_mode=False, limit=10):
@@ -277,8 +296,8 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', orde
             res = {}
             tds = trow.findAll("td")
             #tds[0] -> Name, Magnet, Link
-            res['name'] = tds[0].findAll("a")[0].contents[0].encode('utf-8')
-            res['link'] = baseURL + '/' + tds[0].findAll("a")[0].attrs['href'].encode('utf-8')
+            res['name'] = tds[0].findAll("a")[0].contents[0]
+            res['link'] = baseURL + '/' + tds[0].findAll("a")[0].attrs['href']
 
             if tds[0].findAll("img")[0].attrs['src'] == '/files/thumb_upm.png' and tds[0].findAll("img")[1].attrs['src'] == '/files/thumb_downm.png':
                 # Both upvotes and downvotes found
@@ -297,7 +316,7 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', orde
                 res['up'] = '0'
                 res['down'] = '0'
             
-            res['magnet'] = tds[0].findAll("a")[2].attrs['href'].encode('utf-8')
+            res['magnet'] = tds[0].findAll("a")[2].attrs['href']
             #tds[1] -> Size
             res['size'] = tds[1].contents[0].encode('utf-8')
             #tds[2] -> No. of files
@@ -305,22 +324,23 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', orde
             #tds[3] -> Date added
             # res['date'] = tds[3].contents[0].encode('utf-8')
             #tds[4] -> Seeders
-            res['seeders'] = tds[4].contents[0].encode('utf-8').replace(',', '')
+            res['seeders'] = tds[4].contents[0].replace(',', '')
             #tds[5] -> Leechers
-            res['leechers'] = tds[5].contents[0].encode('utf-8').replace(',', '')
+            res['leechers'] = tds[5].contents[0].replace(',', '')
             try:
                 res['ratio'] = format( (float(res['seeders'])/float(res['leechers'])), '.1f' )
             except ZeroDivisionError:
                 res['ratio'] = 'inf'
             results_sky.append(res)
 
-    except Exception, e:
+    except Exception as e:
         if quiet_mode == False:
             if tbody == None:
-                print colored.magenta("[SkyTorrents] Error : No results found")    
+                print(colored.magenta("[SkyTorrents] Error : No results found"))    
             else:
-                print colored.red("[SkyTorrents] Error : Unkown problem while searching")
-                print colored.yellow('ERR_MSG : ' + str(e))
+                print(colored.red("[SkyTorrents] Error : Unkown problem while searching"))
+                print(colored.yellow('ERR_MSG : ' + str(e)))
+                #traceback.print_exc()
 
     return results_sky
 
@@ -343,20 +363,20 @@ def pretty_print_top_results_skytorrents(limit=10):
 
     #print '\n\t\t\t\t\t\t' + '+-----------+'
     #print '\t\t\t\t\t\t| ' + colored.green('PirateBay') + ' |'
-    print '\n\t\t\t\t\t\t' + colored.green('Sky Torrents')
+    print('\n\t\t\t\t\t\t' + colored.green('Sky Torrents'))
     # print results
     if results_sky != [{}] and results_sky != [] and results_sky != None:
         #index = num_results_tpb_api + 1
         index = num_results + 1
         for r in results_sky[:limit]:
             try :
-                table_skytorrents.add_row([index, r['name'][:57], r['size'], r['seeders'], r['leechers'], r['ratio'], (r['up'] + '/' + r['down'])])
+                table_skytorrents.add_row([index, r['name'][:57], r['size'].decode('utf-8'), r['seeders'], r['leechers'], r['ratio'], (r['up'] + '/' + r['down'])])
                 index = index + 1
-            except KeyError, e:
+            except KeyError as e:
                 # Fix error where {} is included in results and screws up numbering #
                 if r != {}:
-                    print r
-                    print e
+                    print(r)
+                    print(e)
         table_skytorrents.align[no_str] = 'l'
         table_skytorrents.align[name_str] = 'l'
         table_skytorrents.align[size_str] = 'r'
@@ -364,13 +384,58 @@ def pretty_print_top_results_skytorrents(limit=10):
         table_skytorrents.align[leech_str] = 'r'
         table_skytorrents.align[ratio_str] = 'r'
         table_skytorrents.align[votes_str] = 'c'
-        print table_skytorrents
+        print(table_skytorrents)
         return index - 1
     else:
         table_skytorrents.add_row(["Null", "Null", "Null", "Null", "Null", "Null", "Null"])
         #table_piratebay.align[colored.red('Torrent Name')] = 'l'
-        print table_skytorrents
+        print(table_skytorrents)
         return num_results
+
+def searchPirateBayCondensed(search_string=defaultQuery, page=0, order_by=ORDER_BY.SEEDERS, domain='thepiratebay.org', quiet_mode=False, limit=10):
+    global tpb_working_domain, tpb_url, results_tpb_condensed
+    url = f'https://{tpb_working_domain}/s/?q={removeAndReplaceSpaces(search_string)}&page=0&orderby=99'
+    tpb_url = url
+    #print url
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
+    table = None
+
+    try:
+        r = requests.get(url, headers=headers)
+        soup = BeautifulSoup(r.content, "html.parser")
+        table = soup.find("table", {"id": "searchResult"})
+        trs = table.findAll("tr")
+        del trs[:1]
+
+        results_tpb_condensed = []
+        #for tr in trs:
+        for tr in trs[:limit]:
+            tds = tr.findAll("td")
+
+            res = {}
+            link_name = tds[1].find("a", {"class": "detLink"})
+            res['name'] = link_name.contents[0].strip()
+            res['link'] = link_name["href"]
+            res['seeders'] = int(tds[2].contents[0])
+            res['leechers'] = int(tds[3].contents[0])
+            try:
+                res['ratio'] = format( (float(res['seeders'])/float(res['leechers'])), '.1f' )
+            except ZeroDivisionError:
+                res['ratio'] = 'inf'
+            res['magnet'] = tds[1].find("img", {"alt": "Magnet link"}).parent['href']
+            res['size'] = str(tds[1].find("font").contents[0].split(',')[1].split(' ')[2].replace('\xa0', ' '))
+
+            results_tpb_condensed.append(res)
+    except Exception as e:
+        if quiet_mode == False:
+            if table == None:
+                print(colored.magenta("[PirateBay] Error : No results found"))
+            else:
+                print(colored.red("[PirateBay] Error : Unkown problem while searching"))
+                print(colored.yellow('ERR_MSG : ' + str(e)))
+                #table = None
+    #print(f"Search results TBP: {results_tpb_condensed}")
+    return results_tpb_condensed
 
 def searchPirateBay(search_string = defaultQuery, page = 0, order_by = ORDER_BY.UPLOADER, domain = 'thepiratebay.org', quiet_mode=False):
     """
@@ -389,7 +454,7 @@ def searchPirateBay(search_string = defaultQuery, page = 0, order_by = ORDER_BY.
         table = soup.find("table", {"id": "searchResult"})
         # print "TBP Response : \n"
         # print r.content
-    except requests.exceptions.ConnectionError, e:
+    except requests.exceptions.ConnectionError as e:
         #print e
         err_string = str(e).split(',')[2]
         #print err_string
@@ -399,13 +464,13 @@ def searchPirateBay(search_string = defaultQuery, page = 0, order_by = ORDER_BY.
                 error_str = colored.yellow("[PirateBay] Error : Connection to ") + colored.magenta(domain) + colored.yellow(" timed out.\n")
                 error_str += colored.yellow("Trying to connect via ") + colored.magenta(alternate_domain) + colored.yellow("...")
                 if quiet_mode == False:
-                    print error_str
+                    print(error_str)
                 return searchPirateBay(search_string=search_string, domain='piratebay.red')
             elif domain == 'piratebay.red':
                 error_str = colored.yellow("[PirateBay] Error : Connection to ") + colored.magenta(domain) + colored.yellow(" timed out.\n")
                 error_str += colored.red("Exiting. Try connecting via a proxy...")
                 if quiet_mode == False:
-                    print error_str
+                    print(error_str)
                 table = None
                 #sys.exit(1)
         elif 'Connection refused' in err_string:
@@ -414,13 +479,13 @@ def searchPirateBay(search_string = defaultQuery, page = 0, order_by = ORDER_BY.
                 error_str = colored.red("[PirateBay] Error : Connection to ") + (domain) + colored.red(" refused.\n")
                 error_str += colored.red("Trying to connect via ") + (alternate_domain) + colored.red("...")
                 if quiet_mode == False:
-                    print error_str
+                    print(error_str)
                 return searchPirateBay(search_string=search_string, domain='piratebay.red')
             elif domain == 'piratebay.red':
                 error_str = colored.red("[PirateBay] Error : Connection to ") + (domain) + colored.red(" refused.\n")
                 error_str += colored.red("Exiting. Try connecting via a proxy...")
                 if quiet_mode == False:
-                    print error_str
+                    print(error_str)
                 table = None
                 #sys.exit(1)
         elif 'failed to respond' in err_string:
@@ -429,22 +494,22 @@ def searchPirateBay(search_string = defaultQuery, page = 0, order_by = ORDER_BY.
                 error_str = colored.red("[PirateBay] Error : Connection to ") + (domain) + colored.red(" is probably blocked.\n")
                 error_str += colored.red("Trying to connect via ") + (alternate_domain) + colored.red("...")
                 if quiet_mode == False:
-                    print error_str
+                    print(error_str)
                 return searchPirateBay(search_string=search_string, domain='piratebay.red')
             elif domain == 'piratebay.red':
                 error_str = colored.red("[PirateBay] Error : Connection to ") + (domain) + colored.red(" refused.\n")
                 error_str += colored.red("Exiting. Try connecting via a proxy...")
                 if quiet_mode == False:
-                    print error_str
+                    print(error_str)
                 table = None
                 #sys.exit(1)
         else:
             error_str = colored.red("[PirateBay] Unhandled Error : ") + colored.red(str(e)) + colored.red("\nExiting...")
             if quiet_mode == False:
-                print error_str
+                print(error_str)
             table = None
             #sys.exit(1)
-    except TypeError, e:
+    except TypeError as e:
         #print("Something's wrong...")
         table = None
 
@@ -453,7 +518,7 @@ def searchPirateBay(search_string = defaultQuery, page = 0, order_by = ORDER_BY.
         if domain == 'piratebay.red':
             error_string = str(colored.yellow('[PirateBay] Error : No results found. ')) + str(colored.magenta(domain)) + str(colored.yellow(' might be unreachable!'))
             if quiet_mode == False:
-                print error_string
+                print(error_string)
             return _parse_search_result_table(table, quiet_mode)
         else:
             tpb_working_domain = alternate_domain = 'piratebay.red'
@@ -486,7 +551,7 @@ def _parse_search_result_table(table, quiet_mode=False, limit=10):
         else:
             error_string = '[PirateBay] Error  : No results found'
             if quiet_mode == False:
-                print colored.yellow(error_string)
+                print(colored.yellow(error_string))
             break
     return results
 
@@ -515,7 +580,7 @@ def _parse_search_result_table_row(tr):
             #print s1
             try:
                 s2 = s1[1].split(' ')
-            except IndexError, e: # Special case where size is an integer (eg. s1 = 2 GiB), i.e, no decimal place
+            except IndexError as e: # Special case where size is an integer (eg. s1 = 2 GiB), i.e, no decimal place
                 #print 'Reached here'
                 s1 = s1[0].split(' ')
                 #print s1
@@ -528,7 +593,7 @@ def _parse_search_result_table_row(tr):
                 res['size'] = s1[0] + '.' + s2[0][0] + " " + s2[1]
             else:
                 res['size'] = temp_size
-        except AttributeError, e:
+        except AttributeError as e:
             #print 'Reached here next'
             error_detected_tpb = True
             #print e
@@ -569,9 +634,9 @@ def _parse_search_result_table_row(tr):
                 soup2 = BeautifulSoup(magnet_req.content, "html.parser")
                 content = soup2.find_all(class_='download')
                 res['magnet'] = content[0].contents[1].attrs['href'].encode('utf-8')
-            except Exception, e:
-                print colored.red("[PirateBay] Error : Unkown problem while searching for magnet link")
-                print colored.yellow('ERR_MSG : ' + str(e))
+            except Exception as e:
+                print(colored.red("[PirateBay] Error : Unkown problem while searching for magnet link"))
+                print(colored.yellow('ERR_MSG : ' + str(e)))
         #print res
         return res
 
@@ -587,10 +652,10 @@ def searchPirateBayWithAPI(search_string = defaultQuery, sort_by = SORT_BY_TBP.S
         response = requests.get(url, headers=headers)
         response_json = json.loads(response.text)
         results_tpb_api = parse_results_tpb_api(response_json, quiet_mode=quiet_mode)
-    except Exception, e:
+    except Exception as e:
         if quiet_mode == False :
-            print colored.red("[PirateBay] : Error while searching")
-            print colored.yellow('ERR_MSG : ' + str(e))
+            print(colored.red("[PirateBay] : Error while searching"))
+            print(colored.yellow('ERR_MSG : ' + str(e)))
         #traceback.print_exc()
     
     # try:
@@ -607,7 +672,7 @@ def parse_results_tpb_api(response_json, quiet_mode=False):
     if response_json == []:
         if quiet_mode == False:
             error_string = '[PirateBay] Error : No results found'
-            print colored.magenta(error_string)
+            print(colored.magenta(error_string))
         return []
     else:
         for post in response_json:
@@ -635,19 +700,19 @@ def parse_results_tpb_api(response_json, quiet_mode=False):
 
 def getQuery():
     global query
-    query = raw_input('Enter search query : ')
+    query = input('Enter search query : ')
     return query
 
 def print_top_results(limit=10):
     global results
     if results != [{}]:
-        print '-------------------------------------------- ' + colored.green('PirateBay') + ' --------------------------------------------'
-        print '{0} {1} {2} {3} {4} {5}'.format(colored.red('No.').ljust(3), colored.red('Torrent Name').ljust(60), colored.red('File Size').rjust(10), colored.red('Seeders').rjust(7), colored.red('Leechers').rjust(6), colored.red('Ratio').rjust(6))
+        print('-------------------------------------------- ' + colored.green('PirateBay') + ' --------------------------------------------')
+        print('{0} {1} {2} {3} {4} {5}'.format(colored.red('No.').ljust(3), colored.red('Torrent Name').ljust(60), colored.red('File Size').rjust(10), colored.red('Seeders').rjust(7), colored.red('Leechers').rjust(6), colored.red('Ratio').rjust(6)))
         index = num_results_rarbg + 1
         for r in results[:limit]:
-            print '{0} {1} {2} {3} {4} {5}'.format(str(index).ljust(3), r['name'][:60].ljust(60), r['size'].rjust(11), str(r['seeders']).rjust(6), str(r['leechers']).rjust(6), str(r['ratio']).rjust(8))
+            print('{0} {1} {2} {3} {4} {5}'.format(str(index).ljust(3), r['name'][:60].ljust(60), r['size'].rjust(11), str(r['seeders']).rjust(6), str(r['leechers']).rjust(6), str(r['ratio']).rjust(8)))
             index = index + 1
-        print "---------------------------------------------------------------------------------------------------"
+        print("---------------------------------------------------------------------------------------------------")
         return index - 1
 
 def pretty_print_top_results_piratebay(limit=10):
@@ -661,7 +726,7 @@ def pretty_print_top_results_piratebay(limit=10):
     ratio_str = str(colored.red('S/L'))
     table_piratebay.field_names = [no_str, name_str, size_str, seed_str, leech_str, ratio_str]
 
-    print '\n\t\t\t\t\t\t' + colored.green('PirateBay')
+    print('\n\t\t\t\t\t\t' + colored.green('PirateBay'))
     # print results
     if results != [{}] and results != [] and results != None:
         index = num_results_rarbg + 1
@@ -673,23 +738,23 @@ def pretty_print_top_results_piratebay(limit=10):
                 #print r
                 table_piratebay.add_row([index, r['name'][:57], r['size'], r['seeders'], r['leechers'], r['ratio']])
                 index = index + 1
-            except KeyError, e:
+            except KeyError as e:
                 # Fix error where {} is included in results and screws up numbering #
                 if r != {}:
-                    print r
-                    print e
+                    print(r)
+                    print(e)
         table_piratebay.align[no_str] = 'l'
         table_piratebay.align[name_str] = 'l'
         table_piratebay.align[size_str] = 'r'
         table_piratebay.align[seed_str] = 'r'
         table_piratebay.align[leech_str] = 'r'
         table_piratebay.align[ratio_str] = 'r'
-        print table_piratebay
+        print(table_piratebay)
         return index - 1
     else:
         table_piratebay.add_row(["Null", "Null", "Null", "Null", "Null", "Null"])
         #table_piratebay.align[colored.red('Torrent Name')] = 'l'
-        print table_piratebay
+        print(table_piratebay)
         return num_results_rarbg
 
 def pretty_print_top_results_piratebay_api(limit=10):
@@ -703,30 +768,30 @@ def pretty_print_top_results_piratebay_api(limit=10):
     ratio_str = str(colored.red('S/L'))
     table_piratebay.field_names = [no_str, name_str, size_str, seed_str, leech_str, ratio_str]
 
-    print '\n\t\t\t\t\t\t' + colored.green('PirateBay')
+    print('\n\t\t\t\t\t\t' + colored.green('PirateBay'))
     if results_tpb_api != [] and results_tpb_api != None:
         index = num_results_rarbg + 1
         for r in results_tpb_api[:limit]:
             try :
                 table_piratebay.add_row([index, r['name'][:57], r['size'], r['seeders'], r['leechers'], r['ratio']])
                 index = index + 1
-            except KeyError, e:
+            except KeyError as e:
                 # Fix error where {} is included in results and screws up numbering #
                 if r != {}:
-                    print r
-                    print e
+                    print(r)
+                    print(e)
         table_piratebay.align[no_str] = 'l'
         table_piratebay.align[name_str] = 'l'
         table_piratebay.align[size_str] = 'r'
         table_piratebay.align[seed_str] = 'r'
         table_piratebay.align[leech_str] = 'r'
         table_piratebay.align[ratio_str] = 'r'
-        print table_piratebay
+        print(table_piratebay)
         return index - 1
     else:
         table_piratebay.add_row(["Null", "Null", "Null", "Null", "Null", "Null"])
         #table_piratebay.align[colored.red('Torrent Name')] = 'l'
-        print table_piratebay
+        print(table_piratebay)
         return num_results_rarbg
 
 def switch(arg, tpb_api=False):
@@ -735,7 +800,7 @@ def switch(arg, tpb_api=False):
         try:
             resNum = int(re.search(r'\d+', arg).group())
             if resNum <= 0 or resNum > num_results_sky:
-                print 'Invalid command!\n'
+                print('Invalid command!\n')
             else:
                 if tpb_api == True:
                     if resNum <= num_results_rarbg :
@@ -752,14 +817,14 @@ def switch(arg, tpb_api=False):
                     else:
                         mLink = results_sky[(resNum-1)-num_results]['magnet']
                 pyperclip.copy(str(mLink))
-                print 'Magnet link copied to clipboard!'
+                print('Magnet link copied to clipboard!')
         except AttributeError:
-            print 'Enter a valid torrent number as well!'
+            print('Enter a valid torrent number as well!')
     elif ('cs' in arg) and ('z' not in arg):
         try:
             resNum = int(re.search(r'\d+', arg).group())
             if resNum <= 0 or resNum > num_results_sky:
-                print 'Invalid command!\n'
+                print('Invalid command!\n')
             else:
                 if tpb_api == True:
                     if resNum <= num_results_rarbg :
@@ -777,14 +842,14 @@ def switch(arg, tpb_api=False):
                         mLink = results_sky[(resNum-1)-num_results]['magnet']
                 pyperclip.copy(str(mLink))
                 webbrowser.open('https://www.seedr.cc', new=2)
-                print 'Seedr.cc opened and Magnet link copied to clipboard!'
+                print('Seedr.cc opened and Magnet link copied to clipboard!')
         except AttributeError:
-            print 'Enter a valid torrent number as well!'
+            print('Enter a valid torrent number as well!')
     elif 'cz' in arg:
         try:
             resNum = int(re.search(r'\d+', arg).group())
             if resNum <= 0 or resNum > num_results_sky:
-                print 'Invalid command!\n'
+                print('Invalid command!\n')
             else:
                 if tpb_api == True:
                     if resNum <= num_results_rarbg :
@@ -802,14 +867,14 @@ def switch(arg, tpb_api=False):
                         mLink = results_sky[(resNum-1)-num_results]['magnet']
                 pyperclip.copy(str(mLink))
                 webbrowser.open('https://zbigz.unihax.in/', new=2)
-                print 'zbigz opened and Magnet link copied to clipboard!'
+                print('zbigz opened and Magnet link copied to clipboard!')
         except AttributeError:
-            print 'Enter a valid torrent number as well!'
+            print('Enter a valid torrent number as well!')
     elif 'm' in arg:
         try:
             resNum = int(re.search(r'\d+', arg).group())
             if resNum <= 0 or resNum > num_results_sky:
-                print 'Invalid command\n'
+                print('Invalid command\n')
             else:
                 if tpb_api == True:
                     if resNum <= num_results_rarbg :
@@ -825,14 +890,14 @@ def switch(arg, tpb_api=False):
                         mLink = results[(resNum-1)-num_results_rarbg]['magnet']
                     else:
                         mLink = results_sky[(resNum-1)-num_results]['magnet']
-                print "\nMagnet Link : \n" + mLink
+                print("\nMagnet Link : \n" + mLink)
         except AttributeError:
-            print 'Enter a valid torrent number as well!'
+            print('Enter a valid torrent number as well!')
     elif 'd' in arg:
         try:
             resNum = int(re.search(r'\d+', arg).group())
             if resNum <= 0 or resNum > num_results_sky:
-                print 'Invalid command!\n'
+                print('Invalid command!\n')
             else:
                 if tpb_api == True:
                     if resNum <= num_results_rarbg :
@@ -849,16 +914,15 @@ def switch(arg, tpb_api=False):
                     else:
                         mLink = results_sky[(resNum-1)-num_results]['magnet']
                 webbrowser.open(mLink, new=2)
-                print 'Magnet link sent to default torrent client!'
+                print('Magnet link sent to default torrent client!')
         except AttributeError:
-            print 'Enter a valid torrent number as well!'
+            print('Enter a valid torrent number as well!')
     elif 'o' in arg:
         try:
             resNum = int(re.search(r'\d+', arg).group())
-            #re.search('r\d+', 'r1').group()
             #print("resNum : %d" % resNum)
             if resNum <= 0 or resNum > num_results_sky:
-                print 'Invalid command!\n'
+                print('Invalid command!\n')
             else:
                 if tpb_api == True:
                     if resNum <= num_results_rarbg :
@@ -876,18 +940,17 @@ def switch(arg, tpb_api=False):
                     elif resNum > num_results_rarbg and resNum <= num_results:
                         #tLink = "https://" + tpb_working_domain + results[(resNum-1)-num_results_rarbg]['link']
                         tLink = results[(resNum-1)-num_results_rarbg]['link']
-                        #print(tLink)
                     else:
                         tLink = results_sky[(resNum-1)-num_results]['link']
                 #webbrowser.get('chrome').open(tLink, new=2)
                 webbrowser.open(tLink, new=2)
-                print 'Torrent page opened in default browser!'
+                print('Torrent page opened in default browser!')
         except AttributeError:
-            print 'Enter a valid torrent number as well!'
+            print('Enter a valid torrent number as well!')
     elif arg == 'u':
-        print colored.green('[RARBG] URL') + ' : ' + rarbg_url
-        print colored.green('[PirateBay] URL') + ' : ' + tpb_url
-        print colored.green('[SkyTorrents] URL') + ' : ' + skytorrents_url
+        print(colored.green('[RARBG] URL') + ' : ' + rarbg_url)
+        print(colored.green('[PirateBay] URL') + ' : ' + tpb_url)
+        print(colored.green('[SkyTorrents] URL') + ' : ' + skytorrents_url)
     elif arg == 'h':
         print_menu(0)
     elif arg == 'q':
@@ -900,14 +963,14 @@ def switch(arg, tpb_api=False):
             elif resNum == 1:
                 printTopResults(resNum)
             else:
-                print "Not a valid option!"
+                print("Not a valid option!")
         except AttributeError:
             if arg == 'p':
                 printTopResults(print_version)
             else:
-                print "Not a valid command!"
+                print("Not a valid command!")
     elif arg == 's':
-        query = raw_input("Enter query : ")
+        query = input("Enter query : ")
         if query == '':
             query = defaultQuery
         searchAllSites(query, force_search=True)
@@ -916,11 +979,11 @@ def switch(arg, tpb_api=False):
         searchAllSites(query)
         printTopResults(print_version)
     else:
-        print 'Invalid command!\n'
+        print('Invalid command!\n')
 
 def print_menu(arg=0):
     if arg == 0:
-        print '''
+        print('''
         ------ Help Menu -------
         Available Commands :
         1. m<result number> - Print magnet link of selected torrent
@@ -933,14 +996,14 @@ def print_menu(arg=0):
             <choice> : [{default : 1}, {0 : Print formatted result}, {1 : Pretty print results}]
         8. s - Enter a new query to search for over all avilable torrent websites
         9. r - Repeat last search (with same query)
-        ------------------------'''
+        ------------------------''')
     elif arg == 1:
-        print '''
+        print('''
         Enter 'q' to exit and 'h' to see all available commands.
-        '''
+        ''')
 
 def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
-    global results, results_rarbg, results_sky, results_tpb_api, tpb_retries, max_tpb_retries, tpb_working_domain
+    global results, results_rarbg, results_sky, results_tpb_api, tpb_retries, max_tpb_retries, tpb_working_domain, results_tpb_condensed
     #results = searchPirateBay(query, domain='pirateproxy.cam')
     #results = searchPirateBay(query)
 
@@ -949,6 +1012,7 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
         results_tpb_api = None
         results_sky = None
         results = None
+        results_tpb_condensed = None
 
     if results_rarbg == None or results_rarbg == []:
         results_rarbg = searchRarbg(query, quiet_mode=quiet_mode)
@@ -973,10 +1037,19 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
     # print 'Results P : '
     # print results_tpb_api
     
-    if results == None or results == []:
+    # if results == None or results == []:
+    #     tpb_working_domain = 'thepiratebay.zone'
+    #     results = searchPirateBay(query, quiet_mode=quiet_mode, domain=tpb_working_domain)
+    # #     #print results
+
+    if results_tpb_condensed == None or results_tpb_condensed == []:
         tpb_working_domain = 'thepiratebay.zone'
-        results = searchPirateBay(query, quiet_mode=quiet_mode, domain=tpb_working_domain)
-        #print results
+        results_tpb_condensed = searchPirateBayCondensed(search_string=query, domain=tpb_working_domain, quiet_mode=quiet_mode)
+        results = results_tpb_condensed
+    #     print('P searching...')
+    # else:
+    #     print('P not searching...')
+    # print(f'Results P: {results_tpb_condensed}')
 
     if results_sky == None or results_sky == []:
         results_sky = searchSkyTorrents(query, quiet_mode=quiet_mode)
@@ -1039,7 +1112,7 @@ def printResultsQuietly():
     combined_json_results['tpb'] = results_json_tpb
     combined_json_results['sky'] = results_json_sky
 
-    print combined_json_results
+    print(combined_json_results)
 
 def generateAppID(version=-1):
     if version == 0: # Product of 3 random numbers
@@ -1081,5 +1154,5 @@ if __name__ == '__main__':
         exit = False
         while(exit != True):
             print_menu(1)
-            choice = raw_input("Enter command : ")
+            choice = input("Enter command : ")
             switch(choice, tpb_api=False)
