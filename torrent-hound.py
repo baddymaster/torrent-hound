@@ -297,32 +297,35 @@ def search1337x(search_string=defaultQuery, domain='1337x.to', quiet_mode=False,
     soup = BeautifulSoup(response.text, 'html.parser')
     results_1337x = []
     
-    table = soup.find('table', {'class': 'table-list'})
-    rows = table.tbody.find_all('tr')
-    for row in rows[:limit]:
-        row_data = {}
-        name_col = row.find('td', {'class': 'coll-1 name'})
-        row_data['name'] = name_col.a.next_sibling.text
-        row_data['link'] = baseURL + name_col.a.next_sibling['href']
-        row_data['seeders'] = int(row.find('td', {'class': 'coll-2 seeds'}).text.strip())
-        row_data['leechers'] = int(row.find('td', {'class': 'coll-3 leeches'}).text.strip())
-        try:
-            row_data['ratio'] = format( (float(row_data['seeders'])/float(row_data['leechers'])), '.1f' )
-        except ZeroDivisionError:
-            row_data['ratio'] = 'inf'
-        row_data['time'] = row.find('td', {'class': 'coll-date'}).text.strip()
-        size_col = row.find('td', {'class': 'coll-4'})
-        if size_col:
-            row_data['size'] = size_col.contents[0].strip()
-        else:
-            row_data['size'] = ''
-        # uploader_col = row.find('td', {'class': 'coll-5'})
-        # if uploader_col:
-        #     row_data['uploader'] = uploader_col.contents[0].text.strip()
-        # else:
-        #     row_data['uploader'] = ''
-        row_data['magnet'] = extract_magnet_link_1337x(row_data['link'])
-        results_1337x.append(row_data)
+    try:
+        table = soup.find('table', {'class': 'table-list'})
+        rows = table.tbody.find_all('tr')
+        for row in rows[:limit]:
+            row_data = {}
+            name_col = row.find('td', {'class': 'coll-1 name'})
+            row_data['name'] = name_col.a.next_sibling.text
+            row_data['link'] = baseURL + name_col.a.next_sibling['href']
+            row_data['seeders'] = int(row.find('td', {'class': 'coll-2 seeds'}).text.strip())
+            row_data['leechers'] = int(row.find('td', {'class': 'coll-3 leeches'}).text.strip())
+            try:
+                row_data['ratio'] = format( (float(row_data['seeders'])/float(row_data['leechers'])), '.1f' )
+            except ZeroDivisionError:
+                row_data['ratio'] = 'inf'
+            row_data['time'] = row.find('td', {'class': 'coll-date'}).text.strip()
+            size_col = row.find('td', {'class': 'coll-4'})
+            if size_col:
+                row_data['size'] = size_col.contents[0].strip()
+            else:
+                row_data['size'] = ''
+            # uploader_col = row.find('td', {'class': 'coll-5'})
+            # if uploader_col:
+            #     row_data['uploader'] = uploader_col.contents[0].text.strip()
+            # else:
+            #     row_data['uploader'] = ''
+            row_data['magnet'] = extract_magnet_link_1337x(row_data['link'])
+            results_1337x.append(row_data)
+    except AttributeError as e:
+        print(colored.magenta("[1337x] Error : No results found"))
     return results_1337x
 
 def pretty_print_top_results_1337x(limit=10):
@@ -1121,15 +1124,12 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
         results = None
         results_tpb_condensed = None
 
-    print(colored.magenta("Searching RARBG..."), end='')
-    if results_rarbg == None or results_rarbg == []:
-        results_rarbg = searchRarbg(query, quiet_mode=quiet_mode)
-    print(colored.green("Done."))
-    #     print 'R searching...'
-    # else:
-    #     print 'R not searching...'
-    # print 'Results R : '
-    # print results_rarbg
+    ## Search RARBG 
+    # print(colored.magenta("Searching RARBG..."), end='')
+    # if results_rarbg == None or results_rarbg == []:
+    #     results_rarbg = searchRarbg(query, quiet_mode=quiet_mode)
+    # print(colored.green("Done."))
+    results_rarbg = []
 
     # if results_tpb_api == None or results_tpb_api == []:
     #     if tpb_retries < max_tpb_retries:
@@ -1182,7 +1182,10 @@ def printCombinedTopResults():
 
 def prettyPrintCombinedTopResults():
     global num_results, num_results_rarbg, num_results_sky, num_results_tpb_api, num_results_1337x
-    num_results_rarbg = pretty_print_top_results_rarbg(10)
+    
+    #num_results_rarbg = pretty_print_top_results_rarbg(10)
+    num_results_rarbg = 0
+    
     num_results = pretty_print_top_results_piratebay(10)
     #num_results_tpb_api = pretty_print_top_results_piratebay_api(10)
     #num_results = num_results_tpb_api
