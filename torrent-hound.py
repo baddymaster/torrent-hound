@@ -36,7 +36,6 @@ import traceback
 import random
 import time
 import argparse
-import cfscrape as cfs
 import traceback
 
 defaultQuery, query = 'jason bourne', ''
@@ -380,8 +379,7 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', orde
     tbody = None
     #headers = {'User-Agent': 'Mozilla/5.0'}
     try:
-        scraper = cfs.create_scraper()
-        r = scraper.get(url, headers=headers)
+        r = requests.get(url, headers=headers)
         soup = BeautifulSoup(r.content, "html.parser")
         #print soup
         tbody = soup.find('tbody')

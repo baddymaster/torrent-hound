@@ -9,8 +9,6 @@ Search torrents from multiple websites via the CLI
 - pyperclip
 - humanize
 - VeryPrettyTable
-- cfscrape
-
 
 ### Installation
 Install package and dependencies directly via pip using `pip install torrent-hound`
