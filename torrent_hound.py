@@ -31,7 +31,7 @@ from bs4 import BeautifulSoup
 from rich.console import Console
 from rich.table import Table
 
-__version__ = "2.2.1"
+__version__ = "2.2.2"
 
 console = Console()
 
