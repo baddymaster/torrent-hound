@@ -62,6 +62,23 @@ installed its scripts directory:
 
 Upgrade later with `pip install -U torrent-hound` (or `pipx upgrade torrent-hound`).
 
+### Standalone binary (no Python required)
+
+Download the latest pre-built binary for your platform from the
+[Releases page](https://github.com/baddymaster/torrent-hound/releases/latest),
+make it executable, and run it directly:
+
+```
+# macOS / Linux
+chmod +x torrent-hound-macos    # or torrent-hound-linux
+./torrent-hound-macos ubuntu
+
+# Optionally move it onto your PATH
+mv torrent-hound-macos ~/.local/bin/torrent-hound
+```
+
+On Windows, download `torrent-hound-windows.exe` and run it from the command prompt.
+
 ### From source
 
 ```
