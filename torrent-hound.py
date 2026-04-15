@@ -3,7 +3,7 @@
 # @github : github.com/baddymaster
 
 #   <Torrent Hound - Search torrents from multiple websites via the CLI.>
-#    Copyright (C) <2023>  <Yashovardhan Sharma>
+#    Copyright (C) <2023-2026>  <Yashovardhan Sharma>
 #
 #     This program is free software: you can redistribute it and/or modify
 #     it under the terms of the GNU Affero General Public License as published
@@ -46,7 +46,7 @@ class colored:
     @staticmethod
     def magenta(s): return f"\x1b[35m{s}\x1b[0m"
 
-defaultQuery, query = 'jason bourne', ''
+defaultQuery, query = 'ubuntu', ''
 results_tpb_condensed = None
 results_1337x = None
 results, results_rarbg, exit = None, None, None
