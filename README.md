@@ -68,22 +68,15 @@ Upgrade later with `pip install -U torrent-hound` (or `pipx upgrade torrent-houn
 git clone https://github.com/baddymaster/torrent-hound.git
 cd torrent-hound
 
-# Create a venv so deps don't pollute your system Python
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -e .          # installs deps + puts torrent-hound on PATH
 ```
 
-Then invoke it directly:
+For development (adds pytest + ruff):
 
 ```
-python3 torrent-hound.py <query>
-```
-
-Optionally symlink the script onto your `$PATH`:
-
-```
-ln -s "$(pwd)/torrent-hound.py" ~/.local/bin/torrent-hound
+pip install -e ".[dev]"
 ```
 
 ## Usage
@@ -129,7 +122,7 @@ torrent-hound --json ubuntu | jq '.tpb.results["0"].magnet'
 ### Running tests
 
 ```
-pip install -r requirements-dev.txt
+pip install -e ".[dev]"
 pytest tests/
 ```
 
@@ -140,12 +133,11 @@ chain tests.
 ### Project layout
 
 ```
-torrent-hound.py      # single-file entry point
+torrent_hound.py      # single-file entry point
+pyproject.toml        # packaging, deps, ruff config, pytest config
 tests/                # pytest suite
-  conftest.py         # loads torrent-hound.py as a module
+  conftest.py         # loads torrent_hound.py as a module
   fixtures/           # saved HTML responses for offline parser tests
-requirements.txt      # runtime deps
-requirements-dev.txt  # runtime + pytest
 ```
 
 ## Troubleshooting

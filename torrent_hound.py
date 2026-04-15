@@ -401,30 +401,28 @@ def printResultsQuietly(as_json=False):
     else:
         print(combined_json_results)
 
-if __name__ == '__main__':
-    # initiate the parser
-    parser = argparse.ArgumentParser(prog="torrent-hound")
+def main():
+    global query, exit
 
-    # add arguments
+    parser = argparse.ArgumentParser(prog="torrent-hound")
     parser.add_argument("query", help="Specify the search query", nargs='+', default=defaultQuery)
     parser.add_argument('-q', '--quiet', help='Print output of search without any additional options', default=False, action='store_true')
     parser.add_argument('--json', help='Print results as JSON (implies --quiet)', default=False, action='store_true', dest='as_json')
     parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {__version__}')
 
-    # read arguments from the command line
     args = parser.parse_args()
 
     if args.query:
-        query = ' '.join(args.query) # converts args from list to string
+        query = ' '.join(args.query)
     else:
         print("Please enter a valid query.")
         sys.exit(0)
 
-    if args.quiet or args.as_json: # Continue in non-interactive mode
+    if args.quiet or args.as_json:
         searchAllSites(query, quiet_mode=True)
         printResultsQuietly(as_json=args.as_json)
-    else: # Continue in interactive mode
-        searchAllSites(query) # quiet_mode is off by default
+    else:
+        searchAllSites(query)
         printTopResults()
 
         exit = False
@@ -432,3 +430,6 @@ if __name__ == '__main__':
             print_menu(1)
             choice = input("Enter command : ")
             switch(choice)
+
+if __name__ == '__main__':
+    main()

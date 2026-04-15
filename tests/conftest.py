@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).parent.parent
-SOURCE = ROOT / "torrent-hound.py"
+SOURCE = ROOT / "torrent_hound.py"
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
