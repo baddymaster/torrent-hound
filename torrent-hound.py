@@ -1126,12 +1126,14 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
     #     results = searchPirateBay(query, quiet_mode=quiet_mode, domain=tpb_working_domain)
     # #     #print results
 
-    print(colored.magenta("Searching TBP..."), end='')
+    if quiet_mode == False:
+        print(colored.magenta("Searching TBP..."), end='')
     if results_tpb_condensed == None or results_tpb_condensed == []:
         tpb_working_domain = 'thepiratebay.zone'
         results_tpb_condensed = searchPirateBayCondensed(search_string=query, domain=tpb_working_domain, quiet_mode=quiet_mode)
         results = results_tpb_condensed
-    print(colored.green("Done."))
+    if quiet_mode == False:
+        print(colored.green("Done."))
     #     print('P searching...')
     # else:
     #     print('P not searching...')
@@ -1199,7 +1201,7 @@ def convertListJSONToPureJSON(result_list):
 
     return result_json
 
-def printResultsQuietly():
+def printResultsQuietly(as_json=False):
     global results_rarbg, results_tpb_condensed, results_sky, results_1337x
 
     results_json_rarbg = convertListJSONToPureJSON(results_rarbg)
@@ -1214,7 +1216,10 @@ def printResultsQuietly():
     #combined_json_results['sky'] = results_json_sky
     combined_json_results['1337x'] = results_json_1337x
 
-    print(combined_json_results)
+    if as_json:
+        print(json.dumps(combined_json_results))
+    else:
+        print(combined_json_results)
 
 def generateAppID(version=-1):
     if version == 0: # Product of 3 random numbers
@@ -1232,6 +1237,7 @@ if __name__ == '__main__':
     # add arguments
     parser.add_argument("query", help="Specify the search query", nargs='+', default=defaultQuery)
     parser.add_argument('-q', '--quiet', help='Print output of search without any additional options', default=False, action='store_true')
+    parser.add_argument('--json', help='Print results as JSON (implies --quiet)', default=False, action='store_true', dest='as_json')
 
     # read arguments from the command line
     args = parser.parse_args()
@@ -1245,10 +1251,9 @@ if __name__ == '__main__':
         print("Please enter a valid query.")
         sys.exit(0)
 
-    if args.quiet: # Continue in non-interactive mode
-        #print("Result will be printed quiety...")
+    if args.quiet or args.as_json: # Continue in non-interactive mode
         searchAllSites(query, quiet_mode=True)
-        printResultsQuietly()
+        printResultsQuietly(as_json=args.as_json)
     else: # Continue in interactive mode
         searchAllSites(query) # quiet_mode is off by default
         printTopResults(print_version)
