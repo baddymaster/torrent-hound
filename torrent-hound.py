@@ -18,17 +18,18 @@
 #     You should have received a copy of the GNU Affero General Public License
 #     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from bs4 import BeautifulSoup
-from concurrent.futures import ThreadPoolExecutor
-from rich.console import Console
-from rich.table import Table
-import requests
+import argparse
+import json
 import re
 import sys
-import pyperclip
 import webbrowser
-import json
-import argparse
+from concurrent.futures import ThreadPoolExecutor
+
+import pyperclip
+import requests
+from bs4 import BeautifulSoup
+from rich.console import Console
+from rich.table import Table
 
 __version__ = "2.2.0-dev"
 
@@ -65,7 +66,7 @@ def extract_magnet_link_1337x(url):
         return magnet_link['href']
     else:
         return None
-    
+
 def search1337x(search_string=defaultQuery, domain='1337x.to', quiet_mode=False, limit=10):
     global results_1337x, url_1337x
 
@@ -74,13 +75,13 @@ def search1337x(search_string=defaultQuery, domain='1337x.to', quiet_mode=False,
     baseURL = f'https://{domain}'
     url = f'{baseURL}/search/{query}/{page_no}/'
     url_1337x = url
-    
+
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
     response = requests.get(url, headers=headers)
     results_1337x = []
 
     if response.status_code == 403 and response.headers.get('cf-mitigated', '').lower() == 'challenge':
-        if quiet_mode == False:
+        if not quiet_mode:
             print(colored.magenta("[1337x] Error : Blocked by Cloudflare captcha"))
         return results_1337x
 
@@ -113,8 +114,8 @@ def search1337x(search_string=defaultQuery, domain='1337x.to', quiet_mode=False,
             #     row_data['uploader'] = ''
             row_data['magnet'] = extract_magnet_link_1337x(row_data['link'])
             results_1337x.append(row_data)
-    except AttributeError as e:
-        if quiet_mode == False:
+    except AttributeError:
+        if not quiet_mode:
             print(colored.magenta("[1337x] Error : No results found"))
     return results_1337x
 
@@ -191,7 +192,7 @@ def searchPirateBayCondensed(search_string=defaultQuery, quiet_mode=False, limit
         except requests.RequestException:
             continue  # try next mirror
 
-    if quiet_mode == False:
+    if not quiet_mode:
         print(colored.magenta("[PirateBay] Error : All known mirrors returned no results or were unreachable"))
     results_tpb_condensed = []
     return results_tpb_condensed
@@ -334,7 +335,7 @@ _SOURCES = [
 def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
     global results, results_rarbg, results_tpb_condensed, results_1337x
 
-    if force_search == True:
+    if force_search:
         results_1337x = None
         results = None
         results_tpb_condensed = None
@@ -342,7 +343,7 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
     # RARBG and SkyTorrents permanently removed. See git history.
     results_rarbg = []
 
-    if quiet_mode == False:
+    if not quiet_mode:
         names = ", ".join(name for name, _ in _SOURCES)
         print(colored.magenta(f"Searching {names}..."), end='')
 
@@ -352,7 +353,7 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
         futures = {name: pool.submit(fn, query, quiet_mode) for name, fn in _SOURCES}
         source_results = {name: (fut.result() or []) for name, fut in futures.items()}
 
-    if quiet_mode == False:
+    if not quiet_mode:
         print(colored.green("Done."))
 
     results_tpb_condensed = source_results.get('TPB', [])
@@ -362,24 +363,24 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
 def prettyPrintCombinedTopResults():
     global num_results
     num_results = pretty_print_top_results_piratebay(10)
-    
+
 def printTopResults():
     prettyPrintCombinedTopResults()
 
-def convertListJSONToPureJSON(result_list): 
+def convertListJSONToPureJSON(result_list):
     # Sample JSON Structure
-    # { 
+    # {
     #  'count' : x,    ### Gives total number of results
     #  'results' : {'0' : {...}, {'1' : {...}, ...}   ### Stores actual results
     # }
     result_json = {'count' : '0'}
     index = 0
 
-    if result_list != [] and result_list != None: # Create a key 'results' only if there are some results
+    if result_list != [] and result_list is not None: # Create a key 'results' only if there are some results
         result_json['results'] = {}
         rj_results = result_json['results']
-    
-        for item in result_list:
+
+        for _ in result_list:
             rj_results[str(index)] = result_list[index]
             index += 1
         result_json['count'] = str(index) # Update total number of results
@@ -427,7 +428,7 @@ if __name__ == '__main__':
         printTopResults()
 
         exit = False
-        while(exit != True):
+        while not exit:
             print_menu(1)
             choice = input("Enter command : ")
             switch(choice)

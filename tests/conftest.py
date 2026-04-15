@@ -4,9 +4,9 @@ The source file uses a hyphen in its name (`torrent-hound.py`), which isn't
 importable via a normal `import` statement. We load it manually with
 importlib and expose it as the fixture `th` so tests can do `th.function(...)`.
 """
-from pathlib import Path
 import importlib.util
 import sys
+from pathlib import Path
 
 import pytest
 

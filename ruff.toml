@@ -1,0 +1,12 @@
+# Ruff configuration. See: https://docs.astral.sh/ruff/configuration/
+target-version = "py39"
+line-length = 120
+
+[lint]
+# Start with a sensible default rule set: pyflakes (F), pycodestyle (E/W),
+# isort (I), pyupgrade (UP), bugbear (B), comprehensions (C4), pie (PIE).
+select = ["E", "W", "F", "I", "UP", "B", "C4", "PIE"]
+ignore = [
+    "E501",  # line too long — handled by formatter, not lint
+    "E731",  # lambda assignment — used intentionally for source registry
+]
