@@ -19,8 +19,8 @@
 #     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from bs4 import BeautifulSoup
-from clint.textui import colored
-from veryprettytable import VeryPrettyTable
+from rich.console import Console
+from rich.table import Table
 import requests
 import re
 import sys
@@ -28,6 +28,22 @@ import pyperclip
 import webbrowser
 import json
 import argparse
+
+console = Console()
+
+class colored:
+    """Minimal ANSI color wrapper so colored.<name>(s) calls still produce
+    escape-coded strings usable with plain print()."""
+    @staticmethod
+    def red(s): return f"\x1b[31m{s}\x1b[0m"
+    @staticmethod
+    def green(s): return f"\x1b[32m{s}\x1b[0m"
+    @staticmethod
+    def yellow(s): return f"\x1b[33m{s}\x1b[0m"
+    @staticmethod
+    def blue(s): return f"\x1b[34m{s}\x1b[0m"
+    @staticmethod
+    def magenta(s): return f"\x1b[35m{s}\x1b[0m"
 
 defaultQuery, query = 'jason bourne', ''
 results_tpb_condensed = None
@@ -101,43 +117,9 @@ def search1337x(search_string=defaultQuery, domain='1337x.to', quiet_mode=False,
 
 def pretty_print_top_results_1337x(limit=10):
     global results_1337x, num_results
-    table_1337x = VeryPrettyTable(left_padding_width=0, right_padding_width=0, padding_width=0)
-    no_str = str(colored.red('No'))
-    name_str = str(colored.red('Torrent Name'))
-    size_str = str(colored.red('Size'))
-    seed_str = str(colored.red('S'))
-    leech_str = str(colored.red('L'))
-    ratio_str = str(colored.red('S/L'))
-    table_1337x.field_names = [no_str, name_str, size_str, seed_str, leech_str, ratio_str]
-
-    #print '\n\t\t\t\t\t\t' + '+-----------+'
-    #print '\t\t\t\t\t\t| ' + colored.green('PirateBay') + ' |'
-    print('\n\t\t\t\t\t\t' + colored.green('1337x'))
-    # print results
-    if results_1337x != [{}] and results_1337x != [] and results_1337x != None:
-        index = num_results + 1 # Index after TBP
-        for r in results_1337x[:limit]:
-            try :
-                table_1337x.add_row([index, r['name'][:57], r['size'], r['seeders'], r['leechers'], r['ratio']])
-                index = index + 1
-            except KeyError as e:
-                # Fix error where {} is included in results and screws up numbering #
-                if r != {}:
-                    print(r)
-                    print(e)
-        table_1337x.align[no_str] = 'l'
-        table_1337x.align[name_str] = 'l'
-        table_1337x.align[size_str] = 'r'
-        table_1337x.align[seed_str] = 'r'
-        table_1337x.align[leech_str] = 'r'
-        table_1337x.align[ratio_str] = 'r'
-        print(table_1337x)
-        return index - 1
-    else:
-        table_1337x.add_row(["Null", "Null", "Null", "Null", "Null", "Null"])
-        #table_piratebay.align[colored.red('Torrent Name')] = 'l'
-        print(table_1337x)
-        return num_results
+    table, count = _build_results_table(results_1337x, "1337x", start_index=num_results + 1, limit=limit)
+    console.print(table)
+    return num_results + count
 
 def removeAndReplaceSpaces(string):
     if string[0] == " ":
@@ -189,41 +171,47 @@ def searchPirateBayCondensed(search_string=defaultQuery, domain='thepiratebay.or
     #print(f"Search results TBP: {results_tpb_condensed}")
     return results_tpb_condensed
 
+def _build_results_table(entries, source_name, start_index=1, limit=10):
+    """Build a rich Table from a list of result dicts. Returns (table, count_added)."""
+    table = Table(
+        title=f"[green]{source_name}[/green]",
+        header_style="red",
+        padding=(0, 1),
+        show_lines=False,
+    )
+    table.add_column("No", justify="left")
+    table.add_column("Torrent Name", justify="left", no_wrap=True)
+    table.add_column("Size", justify="right")
+    table.add_column("S", justify="right")
+    table.add_column("L", justify="right")
+    table.add_column("S/L", justify="right")
+
+    if entries and entries != [{}]:
+        index = start_index
+        for r in entries[:limit]:
+            if not r:
+                continue
+            try:
+                table.add_row(
+                    str(index),
+                    r['name'][:57],
+                    r['size'],
+                    str(r['seeders']),
+                    str(r['leechers']),
+                    str(r['ratio']),
+                )
+                index += 1
+            except KeyError as e:
+                console.print(f"[yellow]Skipping malformed row: {e}[/yellow]")
+        return table, index - start_index
+    table.add_row("Null", "Null", "Null", "Null", "Null", "Null")
+    return table, 0
+
 def pretty_print_top_results_piratebay(limit=10):
     global results
-    table_piratebay = VeryPrettyTable(left_padding_width=0, right_padding_width=0, padding_width=0)
-    no_str = str(colored.red('No'))
-    name_str = str(colored.red('Torrent Name'))
-    size_str = str(colored.red('Size'))
-    seed_str = str(colored.red('S'))
-    leech_str = str(colored.red('L'))
-    ratio_str = str(colored.red('S/L'))
-    table_piratebay.field_names = [no_str, name_str, size_str, seed_str, leech_str, ratio_str]
-
-    print('\n\t\t\t\t\t\t' + colored.green('PirateBay'))
-    if results != [{}] and results != [] and results != None:
-        index = 1
-        for r in results[:limit]:
-            try:
-                table_piratebay.add_row([index, r['name'][:57], r['size'], r['seeders'], r['leechers'], r['ratio']])
-                index = index + 1
-            except KeyError as e:
-                # Skip empty {} entries that can slip in on parser errors
-                if r != {}:
-                    print(r)
-                    print(e)
-        table_piratebay.align[no_str] = 'l'
-        table_piratebay.align[name_str] = 'l'
-        table_piratebay.align[size_str] = 'r'
-        table_piratebay.align[seed_str] = 'r'
-        table_piratebay.align[leech_str] = 'r'
-        table_piratebay.align[ratio_str] = 'r'
-        print(table_piratebay)
-        return index - 1
-    else:
-        table_piratebay.add_row(["Null", "Null", "Null", "Null", "Null", "Null"])
-        print(table_piratebay)
-        return 0
+    table, count = _build_results_table(results, "PirateBay", start_index=1, limit=limit)
+    console.print(table)
+    return count
 
 def _get_entry(resNum):
     """Return the search result dict for a 1-indexed result number, or None if invalid."""
