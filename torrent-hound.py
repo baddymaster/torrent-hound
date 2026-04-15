@@ -30,6 +30,8 @@ import webbrowser
 import json
 import argparse
 
+__version__ = "2.2.0-dev"
+
 console = Console()
 
 class colored:
@@ -400,12 +402,13 @@ def printResultsQuietly(as_json=False):
 
 if __name__ == '__main__':
     # initiate the parser
-    parser = argparse.ArgumentParser()  
+    parser = argparse.ArgumentParser(prog="torrent-hound")
 
     # add arguments
     parser.add_argument("query", help="Specify the search query", nargs='+', default=defaultQuery)
     parser.add_argument('-q', '--quiet', help='Print output of search without any additional options', default=False, action='store_true')
     parser.add_argument('--json', help='Print results as JSON (implies --quiet)', default=False, action='store_true', dest='as_json')
+    parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {__version__}')
 
     # read arguments from the command line
     args = parser.parse_args()
