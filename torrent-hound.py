@@ -3,7 +3,7 @@
 # @github : github.com/baddymaster
 
 #   <Torrent Hound - Search torrents from multiple websites via the CLI.>
-#    Copyright (C) <2023-2026>  <Yashovardhan Sharma>
+#    Copyright (C) <2017-2026>  <Yashovardhan Sharma>
 #
 #     This program is free software: you can redistribute it and/or modify
 #     it under the terms of the GNU Affero General Public License as published
