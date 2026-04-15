@@ -19,6 +19,7 @@
 #     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from bs4 import BeautifulSoup
+from concurrent.futures import ThreadPoolExecutor
 from rich.console import Console
 from rich.table import Table
 import requests
@@ -320,8 +321,16 @@ def print_menu(arg=0):
         Enter 'q' to exit and 'h' to see all available commands.
         ''')
 
+# Registry of active torrent sources. Each entry is (display_name, callable).
+# The callable takes (query, quiet_mode) and returns a list of result dicts.
+# To re-enable 1337x: uncomment its entry (and see search1337x for CF caveats).
+_SOURCES = [
+    ('TPB', lambda q, qm: searchPirateBayCondensed(search_string=q, quiet_mode=qm)),
+    # ('1337x', lambda q, qm: search1337x(q, quiet_mode=qm)),
+]
+
 def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
-    global results, results_rarbg, tpb_working_domain, results_tpb_condensed, results_1337x
+    global results, results_rarbg, results_tpb_condensed, results_1337x
 
     if force_search == True:
         results_1337x = None
@@ -332,21 +341,21 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
     results_rarbg = []
 
     if quiet_mode == False:
-        print(colored.magenta("Searching TBP..."), end='')
-    if results_tpb_condensed == None or results_tpb_condensed == []:
-        results_tpb_condensed = searchPirateBayCondensed(search_string=query, quiet_mode=quiet_mode)
-        results = results_tpb_condensed
+        names = ", ".join(name for name, _ in _SOURCES)
+        print(colored.magenta(f"Searching {names}..."), end='')
+
+    # Fan out all source searches in parallel. With one source this is a no-op;
+    # with N sources, total latency drops to max() instead of sum().
+    with ThreadPoolExecutor(max_workers=max(1, len(_SOURCES))) as pool:
+        futures = {name: pool.submit(fn, query, quiet_mode) for name, fn in _SOURCES}
+        source_results = {name: (fut.result() or []) for name, fut in futures.items()}
+
     if quiet_mode == False:
         print(colored.green("Done."))
 
-    ## Search 1337x
-    # Disabled: 1337x sits behind a Cloudflare managed challenge that requires
-    # JS execution; no lightweight pure-Python approach bypasses it.
-    # print(colored.magenta("Searching 1337x..."), end='')
-    # if results_1337x == None or results_1337x == []:
-    #     results_1337x = search1337x(query, quiet_mode=quiet_mode)
-    # print(colored.green("Done."))
-    results_1337x = []
+    results_tpb_condensed = source_results.get('TPB', [])
+    results = results_tpb_condensed
+    results_1337x = source_results.get('1337x', [])
 
 def prettyPrintCombinedTopResults():
     global num_results
