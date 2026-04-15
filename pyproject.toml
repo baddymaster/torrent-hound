@@ -10,10 +10,10 @@ readme = "README.md"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.9"
 dependencies = [
-    "beautifulsoup4>=4.9",
-    "requests>=2.20,<3",
-    "pyperclip>=1.7",
-    "rich>=12.0",
+    "beautifulsoup4>=4.12",
+    "requests>=2.28,<3",
+    "pyperclip>=1.8",
+    "rich>=13.0",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -26,7 +26,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff"]
+dev = ["pytest", "ruff", "pip-tools"]
 
 [project.scripts]
 torrent-hound = "torrent_hound:main"
