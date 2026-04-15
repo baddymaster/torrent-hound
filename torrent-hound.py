@@ -126,49 +126,71 @@ def removeAndReplaceSpaces(string):
         string = string[1:]
     return string.replace(" ", "+")
 
-def searchPirateBayCondensed(search_string=defaultQuery, domain='thepiratebay.org', quiet_mode=False, limit=10):
-    global tpb_working_domain, tpb_url, results_tpb_condensed
-    url = f'https://{tpb_working_domain}/s/?q={removeAndReplaceSpaces(search_string)}&page=0&orderby=99'
-    tpb_url = url
-    #print url
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
-    table = None
+# TPB domains tried in order. Mirrors churn often; add new ones to the front
+# when they come up, drop dead ones from the tail.
+TPB_DOMAINS = [
+    'thepiratebay.zone',
+    'thepiratebay.org',
+    'tpb.party',
+    'piratebay.party',
+    'pirateproxy.live',
+]
 
-    try:
-        r = requests.get(url, headers=headers)
-        soup = BeautifulSoup(r.content, "html.parser")
-        table = soup.find("table", {"id": "searchResult"})
-        trs = table.find_all("tr")
-        del trs[:1]
-
-        results_tpb_condensed = []
-        #for tr in trs:
-        for tr in trs[:limit]:
-            tds = tr.find_all("td")
-
-            res = {}
+def _parse_tpb_html(html, limit=10):
+    """Parse a TPB search-results HTML document. Returns [] if the expected
+    results table isn't present (domain is dead / blocked / CAPTCHA)."""
+    soup = BeautifulSoup(html, 'html.parser')
+    table = soup.find("table", {"id": "searchResult"})
+    if table is None:
+        return []
+    trs = table.find_all("tr")[1:]  # drop header row
+    parsed = []
+    for tr in trs[:limit]:
+        tds = tr.find_all("td")
+        try:
             link_name = tds[1].find("a", {"class": "detLink"})
-            res['name'] = link_name.contents[0].strip()
-            res['link'] = link_name["href"]
-            res['seeders'] = int(tds[2].contents[0])
-            res['leechers'] = int(tds[3].contents[0])
+            res = {
+                'name': link_name.contents[0].strip(),
+                'link': link_name["href"],
+                'seeders': int(tds[2].contents[0]),
+                'leechers': int(tds[3].contents[0]),
+                'magnet': tds[1].find("img", {"alt": "Magnet link"}).parent['href'],
+                'size': str(tds[1].find("font").contents[0].split(',')[1].split(' ')[2].replace('\xa0', ' ')),
+            }
             try:
-                res['ratio'] = format( (float(res['seeders'])/float(res['leechers'])), '.1f' )
+                res['ratio'] = format(float(res['seeders']) / float(res['leechers']), '.1f')
             except ZeroDivisionError:
                 res['ratio'] = 'inf'
-            res['magnet'] = tds[1].find("img", {"alt": "Magnet link"}).parent['href']
-            res['size'] = str(tds[1].find("font").contents[0].split(',')[1].split(' ')[2].replace('\xa0', ' '))
+            parsed.append(res)
+        except (AttributeError, IndexError, KeyError):
+            continue  # malformed row; skip
+    return parsed
 
-            results_tpb_condensed.append(res)
-    except Exception as e:
-        if quiet_mode == False:
-            if table == None:
-                print(colored.magenta("[PirateBay] Error : No results found"))
-            else:
-                print(colored.red("[PirateBay] Error : Unkown problem while searching"))
-                print(colored.yellow('ERR_MSG : ' + str(e)))
-                #table = None
-    #print(f"Search results TBP: {results_tpb_condensed}")
+def searchPirateBayCondensed(search_string=defaultQuery, quiet_mode=False, limit=10, timeout=8):
+    """Search TPB, trying known mirrors in order until one returns results.
+    On success, remembers the working domain for subsequent calls in this run."""
+    global tpb_working_domain, tpb_url, results_tpb_condensed
+
+    # Try last-known-good domain first, then the rest
+    domains_to_try = [tpb_working_domain] + [d for d in TPB_DOMAINS if d != tpb_working_domain]
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
+
+    for domain in domains_to_try:
+        url = f'https://{domain}/s/?q={removeAndReplaceSpaces(search_string)}&page=0&orderby=99'
+        try:
+            r = requests.get(url, headers=headers, timeout=timeout)
+            parsed = _parse_tpb_html(r.content, limit=limit)
+            if parsed:
+                tpb_working_domain = domain
+                tpb_url = url
+                results_tpb_condensed = parsed
+                return parsed
+        except requests.RequestException:
+            continue  # try next mirror
+
+    if quiet_mode == False:
+        print(colored.magenta("[PirateBay] Error : All known mirrors returned no results or were unreachable"))
+    results_tpb_condensed = []
     return results_tpb_condensed
 
 def _build_results_table(entries, source_name, start_index=1, limit=10):
@@ -312,8 +334,7 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
     if quiet_mode == False:
         print(colored.magenta("Searching TBP..."), end='')
     if results_tpb_condensed == None or results_tpb_condensed == []:
-        tpb_working_domain = 'thepiratebay.zone'
-        results_tpb_condensed = searchPirateBayCondensed(search_string=query, domain=tpb_working_domain, quiet_mode=quiet_mode)
+        results_tpb_condensed = searchPirateBayCondensed(search_string=query, quiet_mode=quiet_mode)
         results = results_tpb_condensed
     if quiet_mode == False:
         print(colored.green("Done."))
