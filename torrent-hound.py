@@ -392,24 +392,24 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', orde
         tbody = soup.find('tbody')
         results_sky = []
 
-        trows = tbody.findAll("tr")
+        trows = tbody.find_all("tr")
         #print len(trows)
         for trow in trows[:limit]:
             res = {}
-            tds = trow.findAll("td")
+            tds = trow.find_all("td")
             #tds[0] -> Name, Magnet, Link
-            res['name'] = tds[0].findAll("a")[0].contents[0]
-            res['link'] = baseURL + '/' + tds[0].findAll("a")[0].attrs['href']
+            res['name'] = tds[0].find_all("a")[0].contents[0]
+            res['link'] = baseURL + '/' + tds[0].find_all("a")[0].attrs['href']
 
-            if tds[0].findAll("img")[0].attrs['src'] == '/files/thumb_upm.png' and tds[0].findAll("img")[1].attrs['src'] == '/files/thumb_downm.png':
+            if tds[0].find_all("img")[0].attrs['src'] == '/files/thumb_upm.png' and tds[0].find_all("img")[1].attrs['src'] == '/files/thumb_downm.png':
                 # Both upvotes and downvotes found
                 res['up'] = '{:+}'.format(int(tds[0].contents[2]))
                 res['down'] = '{:+}'.format(int(tds[0].contents[4]))
-            elif tds[0].findAll("img")[0].attrs['src'] == '/files/thumb_upm.png':
+            elif tds[0].find_all("img")[0].attrs['src'] == '/files/thumb_upm.png':
                 # Only upvotes, no downvotes found
                 res['up'] = '{:+}'.format(int(tds[0].contents[2]))
                 res['down'] = '0'
-            elif tds[0].findAll("img")[0].attrs['src'] == '/files/thumb_downm.png':
+            elif tds[0].find_all("img")[0].attrs['src'] == '/files/thumb_downm.png':
                 # Only downvotes, no upvotes found
                 res['up'] = '0'
                 res['down'] = '{:+}'.format(int(tds[0].contents[2]))
@@ -418,7 +418,7 @@ def searchSkyTorrents(search_string=defaultQuery, domain='skytorrents.lol', orde
                 res['up'] = '0'
                 res['down'] = '0'
             
-            res['magnet'] = tds[0].findAll("a")[2].attrs['href']
+            res['magnet'] = tds[0].find_all("a")[2].attrs['href']
             #tds[1] -> Size
             res['size'] = tds[1].contents[0].encode('utf-8')
             #tds[2] -> No. of files
@@ -506,13 +506,13 @@ def searchPirateBayCondensed(search_string=defaultQuery, page=0, order_by=ORDER_
         r = requests.get(url, headers=headers)
         soup = BeautifulSoup(r.content, "html.parser")
         table = soup.find("table", {"id": "searchResult"})
-        trs = table.findAll("tr")
+        trs = table.find_all("tr")
         del trs[:1]
 
         results_tpb_condensed = []
         #for tr in trs:
         for tr in trs[:limit]:
-            tds = tr.findAll("td")
+            tds = tr.find_all("td")
 
             res = {}
             link_name = tds[1].find("a", {"class": "detLink"})
@@ -637,7 +637,7 @@ def _parse_search_result_table(table, quiet_mode=False, limit=10):
     if table == None:
         results = []
         return results
-    trs = table.findAll("tr")
+    trs = table.find_all("tr")
     del trs[:1]
     # print "\n'tr' tags within table : \n"
     # print trs
@@ -662,7 +662,7 @@ def _parse_search_result_table_row(tr):
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
     
     res = {}
-    tds = tr.findAll("td")
+    tds = tr.find_all("td")
     #print tds
     
     link_name = tds[1].find("a", {"class": "detLink"})
