@@ -7,6 +7,17 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.2.2] - 2026-04-16
+
+### Fixed
+- Empty project description on PyPI (added `readme = "README.md"` to pyproject.toml)
+- GitHub Actions Node 20 deprecation warnings (bumped to actions/checkout@v6, actions/setup-python@v6)
+
+## [2.2.1] - 2026-04-16
+
+### Added
+- Automated PyPI publishing via GitHub Actions (Trusted Publisher, triggers on version tags)
+
 ## [2.2.0] - 2026-04-15
 
 ### Added
