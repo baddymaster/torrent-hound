@@ -1230,10 +1230,10 @@ def convertListJSONToPureJSON(result_list):
     return result_json
 
 def printResultsQuietly():
-    global results_rarbg, results_tpb_api, results_sky, results_1337x
+    global results_rarbg, results_tpb_condensed, results_sky, results_1337x
 
     results_json_rarbg = convertListJSONToPureJSON(results_rarbg)
-    results_json_tpb = convertListJSONToPureJSON(results_tpb_api)
+    results_json_tpb = convertListJSONToPureJSON(results_tpb_condensed)
     #results_json_sky = convertListJSONToPureJSON(results_sky)
     results_json_1337x = convertListJSONToPureJSON(results_1337x)
     #print results_json_tpb
