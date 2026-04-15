@@ -898,7 +898,7 @@ def pretty_print_top_results_piratebay_api(limit=10):
 
 def switch(arg, tpb_api=False):
     global results, exit, defaultQuery, num_results, query, num_results_rarbg, results_rarbg, print_version, tpb_working_domain, results_tpb_api, num_results_tpb_api, results_1337x, num_results_1337x, rarbg_url, skytorrents_url, tpb_url, url_1337x
-    if ('c' in arg) and ('s' not in arg) and ('z' not in arg):
+    if ('c' in arg) and ('s' not in arg):
         try:
             resNum = int(re.search(r'\d+', arg).group())
             if resNum <= 0 or resNum > num_results_1337x:
@@ -924,7 +924,7 @@ def switch(arg, tpb_api=False):
                 print('Magnet link copied to clipboard!')
         except AttributeError:
             print('Enter a valid torrent number as well!')
-    elif ('cs' in arg) and ('z' not in arg):
+    elif 'cs' in arg:
         try:
             resNum = int(re.search(r'\d+', arg).group())
             if resNum <= 0 or resNum > num_results_1337x:
@@ -949,33 +949,6 @@ def switch(arg, tpb_api=False):
                 pyperclip.copy(str(mLink))
                 webbrowser.open('https://www.seedr.cc', new=2)
                 print('Seedr.cc opened and Magnet link copied to clipboard!')
-        except AttributeError:
-            print('Enter a valid torrent number as well!')
-    elif 'cz' in arg:
-        try:
-            resNum = int(re.search(r'\d+', arg).group())
-            if resNum <= 0 or resNum > num_results_1337x:
-                print('Invalid command!\n')
-            else:
-                if tpb_api == True:
-                    if resNum <= num_results_rarbg :
-                        mLink = results_rarbg[resNum-1]['magnet']
-                    elif resNum > num_results_rarbg and resNum <= num_results_tpb_api:
-                        mLink = results_tpb_api[(resNum-1)-num_results_rarbg]['magnet']
-                    else:
-                        #mLink = results_sky[(resNum-1)-num_results_tpb_api]['magnet']
-                        mLink = results_1337x[(resNum-1)-num_results_tpb_api]['magnet']
-                else:
-                    if resNum <= num_results_rarbg :
-                        mLink = results_rarbg[resNum-1]['magnet']
-                    elif resNum > num_results_rarbg and resNum <= num_results:
-                        mLink = results[(resNum-1)-num_results_rarbg]['magnet']
-                    else:
-                        #mLink = results_sky[(resNum-1)-num_results]['magnet']
-                        mLink = results_1337x[(resNum-1)-num_results]['magnet']
-                pyperclip.copy(str(mLink))
-                webbrowser.open('https://zbigz.unihax.in/', new=2)
-                print('zbigz opened and Magnet link copied to clipboard!')
         except AttributeError:
             print('Enter a valid torrent number as well!')
     elif 'm' in arg:
@@ -1062,9 +1035,7 @@ def switch(arg, tpb_api=False):
         except AttributeError:
             print('Enter a valid torrent number as well!')
     elif arg == 'u':
-        print(colored.green('[RARBG] URL') + ' : ' + rarbg_url)
         print(colored.green('[PirateBay] URL') + ' : ' + tpb_url)
-        print(colored.green('[SkyTorrents] URL') + ' : ' + url_1337x)
     elif arg == 'h':
         print_menu(0)
     elif arg == 'q':
@@ -1105,11 +1076,10 @@ def print_menu(arg=0):
         3. d<result number> - Download torrent using default torrent client
         4. o<result number> - Open the torrent page of the selected torrent in the default browser
         5. cs<result number> - Copy magnet link and open seedr.cc
-        6. cz<result number> - Copy magnet link and open zbigz
-        7. p[optional:<choice>] - Print top 10 results from each website for the given query
+        6. p[optional:<choice>] - Print top 10 results from each website for the given query
             <choice> : [{default : 1}, {0 : Print formatted result}, {1 : Pretty print results}]
-        8. s - Enter a new query to search for over all avilable torrent websites
-        9. r - Repeat last search (with same query)
+        7. s - Enter a new query to search for over all avilable torrent websites
+        8. r - Repeat last search (with same query)
         ------------------------''')
     elif arg == 1:
         print('''
