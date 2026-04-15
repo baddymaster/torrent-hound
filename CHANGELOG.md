@@ -7,13 +7,17 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-04-16
+
 ### Added
 - Standalone binary release workflow (PyInstaller builds for Linux, macOS, Windows on every version tag)
 - `requirements.lock` for reproducible CI/dev builds (generated via pip-compile)
+- Automated PyPI publishing via Trusted Publisher
 
 ### Changed
 - Dependency version floors tightened to tested versions (beautifulsoup4>=4.12, requests>=2.28, pyperclip>=1.8, rich>=13.0)
 - CI now installs from lockfile before editable install
+- GitHub Actions bumped to Node 24 (checkout@v6, setup-python@v6)
 
 ## [2.2.2] - 2026-04-16
 
