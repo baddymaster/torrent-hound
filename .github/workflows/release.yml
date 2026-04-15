@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: torrent-hound-linux
+          - os: macos-latest
+            artifact: torrent-hound-macos
+          - os: windows-latest
+            artifact: torrent-hound-windows.exe
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install deps + PyInstaller
+        run: pip install -e . && pip install pyinstaller
+
+      - name: Build standalone binary
+        run: pyinstaller --onefile --name ${{ matrix.artifact }} torrent_hound.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            torrent-hound-linux
+            torrent-hound-macos
+            torrent-hound-windows.exe
+          generate_release_notes: true
