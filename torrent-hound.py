@@ -293,9 +293,15 @@ def search1337x(search_string=defaultQuery, domain='1337x.to', quiet_mode=False,
     
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
     response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.text, 'html.parser')
     results_1337x = []
-    
+
+    if response.status_code == 403 and response.headers.get('cf-mitigated', '').lower() == 'challenge':
+        if quiet_mode == False:
+            print(colored.magenta("[1337x] Error : Blocked by Cloudflare captcha"))
+        return results_1337x
+
+    soup = BeautifulSoup(response.text, 'html.parser')
+
     try:
         table = soup.find('table', {'class': 'table-list'})
         rows = table.tbody.find_all('tr')
@@ -324,7 +330,8 @@ def search1337x(search_string=defaultQuery, domain='1337x.to', quiet_mode=False,
             row_data['magnet'] = extract_magnet_link_1337x(row_data['link'])
             results_1337x.append(row_data)
     except AttributeError as e:
-        print(colored.magenta("[1337x] Error : No results found"))
+        if quiet_mode == False:
+            print(colored.magenta("[1337x] Error : No results found"))
     return results_1337x
 
 def pretty_print_top_results_1337x(limit=10):
@@ -1168,10 +1175,14 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
     # print 'Results S : '
     # print results_sky
 
-    print(colored.magenta("Searching 1337x..."), end='')
-    if results_1337x == None or results_1337x == []:
-        results_1337x = search1337x(query, quiet_mode=quiet_mode)
-    print(colored.green("Done."))
+    ## Search 1337x
+    # Disabled: 1337x sits behind a Cloudflare managed challenge that requires
+    # JS execution; no lightweight pure-Python approach bypasses it.
+    # print(colored.magenta("Searching 1337x..."), end='')
+    # if results_1337x == None or results_1337x == []:
+    #     results_1337x = search1337x(query, quiet_mode=quiet_mode)
+    # print(colored.green("Done."))
+    results_1337x = []
 
 def printCombinedTopResults():
     global num_results, num_results_rarbg
@@ -1189,7 +1200,8 @@ def prettyPrintCombinedTopResults():
     #num_results = num_results_tpb_api
 
     #num_results_sky = pretty_print_top_results_skytorrents(10)
-    num_results_1337x = pretty_print_top_results_1337x(10)
+    #num_results_1337x = pretty_print_top_results_1337x(10)
+    num_results_1337x = num_results
     
 def printTopResults(version=1):
     if version == 0:
