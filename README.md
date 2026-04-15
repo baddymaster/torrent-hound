@@ -1,5 +1,10 @@
 # Torrent Hound
 
+[![CI](https://github.com/baddymaster/torrent-hound/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/baddymaster/torrent-hound/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/torrent-hound.svg)](https://pypi.org/project/torrent-hound/)
+[![Python versions](https://img.shields.io/pypi/pyversions/torrent-hound.svg)](https://pypi.org/project/torrent-hound/)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+
 A terminal-first torrent search CLI. Type a query, get ranked results from
 multiple trackers in one table, then copy a magnet link or open the torrent
 page with a single keystroke.
