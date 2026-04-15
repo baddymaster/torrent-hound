@@ -1,0 +1,4 @@
+tasks/
+.venv/
+__pycache__/
+*.pyc
