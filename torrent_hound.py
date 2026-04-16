@@ -431,12 +431,12 @@ def _build_results_table(entries, source_name, start_index=1, limit=10):
         padding=(0, 1),
         show_lines=False,
     )
-    table.add_column("No", justify="left", no_wrap=True)
-    table.add_column("Torrent Name", justify="left", overflow="ellipsis", max_width=57, ratio=1)
-    table.add_column("Size", justify="right", no_wrap=True)
-    table.add_column("S", justify="right", no_wrap=True)
-    table.add_column("L", justify="right", no_wrap=True)
-    table.add_column("S/L", justify="right", no_wrap=True)
+    table.add_column("No", justify="left")
+    table.add_column("Torrent Name", justify="left", no_wrap=True)
+    table.add_column("Size", justify="right")
+    table.add_column("S", justify="right")
+    table.add_column("L", justify="right")
+    table.add_column("S/L", justify="right")
 
     if entries and entries != [{}]:
         index = start_index
@@ -446,7 +446,7 @@ def _build_results_table(entries, source_name, start_index=1, limit=10):
             try:
                 table.add_row(
                     str(index),
-                    r['name'][:57],
+                    re.sub(r'[^\x20-\x7E]', '', r['name'])[:57],
                     r['size'],
                     str(r['seeders']),
                     str(r['leechers']),
