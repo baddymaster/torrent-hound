@@ -32,8 +32,7 @@ Magnet link copied to clipboard!
 | YTS            | Movies     | JSON API, mirror fallback       |
 | EZTV           | TV shows   | JSON API via IMDB lookup        |
 
-All sources are searched in parallel. EZTV supports episode and quality
-filtering — e.g. `torrent-hound "severance s02e05 1080p"`.
+All sources are searched in parallel.
 
 ## Requirements
 
