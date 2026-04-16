@@ -7,6 +7,12 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- YTS as a second torrent source (movies, JSON API, no Cloudflare)
+- YTS fallback domain chain (yts.lt, yts.am, yts.mx, yts.rs)
+- Quality tags in YTS results (`[720p]`, `[1080p]`, `[2160p]`)
+- 8 new YTS parser tests (30 total)
+
 ## [2.3.1] - 2026-04-16
 
 ### Changed
