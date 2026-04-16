@@ -7,6 +7,12 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.4.2] - 2026-04-16
+
+- Updating README
+- Adding sources table to README
+- Bumping upload/download-artifact to v6
+
 ## [2.4.1] - 2026-04-16
 
 - Adding tests for EZTV slugs, u command URLs, TPB link domains, and Unicode stripping
