@@ -15,9 +15,14 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Quality tags in YTS results (`[720p]`, `[1080p]`, `[2160p]`)
 - 34 new tests (56 total): YTS parser, EZTV parser, episode query parsing, IMDB bridge, domain fallback
 
+### Changed
+- `u` command now shows URLs for all active sources (TPB, YTS, EZTV), not just TPB
+
 ### Fixed
 - TPB links now use the working mirror domain instead of relative paths
 - YTS links now use the working mirror domain instead of whatever the API returned
+- EZTV links now include the slug for valid torrent page URLs
+- Table alignment no longer broken by emoji / wide Unicode characters in torrent names
 
 ## [2.3.1] - 2026-04-16
 
