@@ -60,3 +60,21 @@ def test_resolve_rd_token_neither_returns_none(th, monkeypatch):
 def test_resolve_rd_token_env_empty_falls_through(th, monkeypatch):
     monkeypatch.setenv("RD_TOKEN", "")
     assert th._resolve_rd_token({"real_debrid": {"token": "from-config"}}) == "from-config"
+
+
+def test_resolve_rd_action_default_when_missing(th):
+    assert th._resolve_rd_action({}) == "clipboard"
+    assert th._resolve_rd_action({"real_debrid": {}}) == "clipboard"
+
+
+@pytest.mark.parametrize("value", ["clipboard", "print", "browser", "downie"])
+def test_resolve_rd_action_valid_values(th, value):
+    assert th._resolve_rd_action({"real_debrid": {"action": value}}) == value
+
+
+def test_resolve_rd_action_unknown_warns_and_falls_back(th, capsys):
+    result = th._resolve_rd_action({"real_debrid": {"action": "bogus"}})
+    assert result == "clipboard"
+    out = capsys.readouterr().out
+    assert "Unknown rd action 'bogus'" in out
+    assert "clipboard" in out

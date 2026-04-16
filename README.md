@@ -167,6 +167,54 @@ tests/                # pytest suite
   fixtures/           # saved HTML responses for offline parser tests
 ```
 
+## Real-Debrid integration
+
+Torrent Hound can send a selected torrent to [Real-Debrid](https://real-debrid.com) and hand the resulting direct link to your download manager.
+
+### Setup
+
+1. Get an API token from [https://real-debrid.com/apitoken](https://real-debrid.com/apitoken).
+2. Either export it as an env var:
+   ```bash
+   export RD_TOKEN="..."
+   ```
+   …or save it to the config file (see below).
+
+### Config file
+
+Torrent Hound reads `~/Library/Application Support/torrent-hound/config.toml` on macOS, `~/.config/torrent-hound/config.toml` on Linux, and `%APPDATA%\torrent-hound\config.toml` on Windows. Example:
+
+```toml
+[real_debrid]
+token  = "XXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+action = "downie"
+```
+
+### Action modes
+
+Set `action` to one of:
+
+| Mode        | What happens with the direct link(s)                                                    |
+|-------------|-----------------------------------------------------------------------------------------|
+| `clipboard` | *(default)* Copied to clipboard. Multiple links are joined with newlines.                |
+| `print`     | Printed to stdout.                                                                      |
+| `browser`   | Opened in your default browser (works out of the box without a download manager).        |
+| `downie`    | Sent to [Downie 4](https://software.charliemonroe.net/downie/) via its `downie://` URL scheme (macOS). |
+
+### Usage
+
+After a search, type `rd<n>` at the prompt (e.g. `rd3` for the third result).
+
+- **If the torrent is cached on RD**, you get the direct link(s) immediately via your configured action. Multi-file torrents (season packs, scene releases with samples) open an interactive file picker so you can choose exactly what to debrid.
+- **If not cached**, you'll be asked whether to submit it anyway (uses your fair-use quota). On `y`, the torrent is queued on RD and the torrents page opens in your browser; run `rd<n>` again once it's ready.
+
+### Troubleshooting
+
+- `Real-Debrid rejected the token` — check `RD_TOKEN` or the `token` line in `config.toml`.
+- `DNS lookup for api.real-debrid.com failed` — your ISP/DNS may be blocking Real-Debrid. Try a VPN or a DoH resolver (`1.1.1.1`, `8.8.8.8`).
+- `reachable but returning a block page` — the connection is being filtered by a CDN or transparent proxy. Try a VPN.
+- `Unknown rd action 'xxx'` — your `[real_debrid].action` value isn't one of `clipboard`, `print`, `browser`, or `downie`. Fix it in `config.toml`.
+
 ## Troubleshooting
 
 **SSL handshake errors**: see [these Stack Overflow answers](https://stackoverflow.com/questions/31649390/python-requests-ssl-handshake-failure) for common fixes.

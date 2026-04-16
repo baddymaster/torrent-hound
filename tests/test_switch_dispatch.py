@@ -130,3 +130,21 @@ def test_remove_and_replace_spaces(th):
     assert th.removeAndReplaceSpaces("hello world") == "hello+world"
     assert th.removeAndReplaceSpaces(" leading space") == "leading+space"
     assert th.removeAndReplaceSpaces("no_space") == "no_space"
+
+
+def test_switch_rd_routes_to_cmd_rd(th):
+    th.results = _fake_results(5)
+    th.num_results = 5
+    with patch.object(th, "_cmd_rd") as m_rd:
+        th.switch("rd3")
+    m_rd.assert_called_once()
+    # Should have received entry for index 3
+    assert m_rd.call_args.args[0]["name"] == "result 3"
+
+
+def test_switch_rd0_rejected_as_invalid(th, capsys):
+    th.results = _fake_results(5)
+    th.num_results = 5
+    th.switch("rd0")
+    out = capsys.readouterr().out
+    assert "Invalid command" in out

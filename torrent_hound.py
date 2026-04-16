@@ -19,14 +19,17 @@
 #     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import argparse
+import base64
 import json
 import os
-from pathlib import Path
 import re
+import socket
 import sys
+import time
 import urllib.parse
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -64,10 +67,12 @@ class colored:
 
 defaultQuery, query = 'ubuntu', ''
 
-# --- Config file (~/.config/torrent-hound/config.toml on Linux/macOS;
-# %APPDATA%\torrent-hound\config.toml on Windows). Missing file is
-# non-fatal. Malformed TOML prints a one-line warning and acts as if
-# no config exists.
+# --- Config file. Path resolved via platformdirs:
+#   Linux   : ~/.config/torrent-hound/config.toml (XDG)
+#   macOS   : ~/Library/Application Support/torrent-hound/config.toml
+#   Windows : %APPDATA%\torrent-hound\config.toml
+# Missing file is non-fatal. Malformed TOML prints a one-line warning
+# and acts as if no config exists.
 def _config_path():
     return Path(platformdirs.user_config_dir("torrent-hound")) / "config.toml"
 
@@ -89,6 +94,19 @@ def _resolve_rd_token(config):
     if env:
         return env
     return (config.get("real_debrid") or {}).get("token") or None
+
+
+_RD_VALID_ACTIONS = ("clipboard", "print", "browser", "downie")
+
+
+def _resolve_rd_action(config):
+    value = (config.get("real_debrid") or {}).get("action")
+    if value is None:
+        return "clipboard"
+    if value in _RD_VALID_ACTIONS:
+        return value
+    print(f"Unknown rd action '{value}' in config; using clipboard")
+    return "clipboard"
 
 
 results_tpb_condensed = None
@@ -516,6 +534,214 @@ def _get_entry(resNum):
         return None
     return results[resNum - 1]
 
+# === Real-Debrid integration =============================================
+# Helpers live here (parsing, API calls, file picker, action dispatch).
+# The user-facing command handler is `_cmd_rd`, grouped with the other
+# `_cmd_*` functions below.
+
+
+_RD_HASH_RE = re.compile(r"xt=urn:btih:([0-9a-fA-F]{40}|[A-Za-z2-7]{32})")
+
+
+def _rd_parse_hash(magnet):
+    if not magnet:
+        return None
+    match = _RD_HASH_RE.search(magnet)
+    if not match:
+        return None
+    raw = match.group(1)
+    if len(raw) == 40:
+        return raw.lower()
+    # 32-char base32 → decode to 20 bytes → hex-encode to 40 chars
+    return base64.b32decode(raw.upper()).hex()
+
+
+def _human_size(n):
+    if n < 1024:
+        return f"{n} B"
+    for unit in ("KB", "MB", "GB", "TB"):
+        n /= 1024
+        if n < 1024:
+            return f"{n:.1f} {unit}"
+    return f"{n:.1f} PB"
+
+
+def _rd_parse_selection(text, total):
+    """Parse a file-picker selection string.
+
+    Returns 'cancel', a sorted unique list of 1-indexed positions, or None
+    if the input is invalid.
+    """
+    s = text.strip().lower()
+    if s == "c":
+        return "cancel"
+    if s in ("", "all"):
+        return list(range(1, total + 1))
+
+    picks = set()
+    for part in s.split(","):
+        part = part.strip()
+        if not part:
+            return None
+        if "-" in part:
+            bounds = part.split("-")
+            if len(bounds) != 2 or not bounds[0].strip() or not bounds[1].strip():
+                return None
+            try:
+                lo, hi = int(bounds[0]), int(bounds[1])
+            except ValueError:
+                return None
+            if lo < 1 or hi > total or lo > hi:
+                return None
+            picks.update(range(lo, hi + 1))
+        else:
+            try:
+                n = int(part)
+            except ValueError:
+                return None
+            if n < 1 or n > total:
+                return None
+            picks.add(n)
+    return sorted(picks)
+
+
+_RD_API = "https://api.real-debrid.com/rest/1.0"
+
+
+class _RdError(Exception):
+    """Carries a pre-formatted user-facing message; caller just prints it."""
+
+
+def _rd_has_cdn_markers(headers):
+    if "cf-ray" in headers or "cf-mitigated" in headers:
+        return True
+    server = headers.get("server", "")
+    return server.lower().startswith("cloudflare")
+
+
+def _rd_request(method, path, token, data=None):
+    """Call RD. Returns parsed JSON dict, or None for 204. Raises _RdError."""
+    url = _RD_API + path
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        resp = requests.request(method, url, headers=headers, data=data, timeout=3)
+    except requests.Timeout:
+        raise _RdError("Real-Debrid timed out. Try again in a moment.") from None
+    except requests.ConnectionError as e:
+        cause = e.__cause__
+        while cause is not None:
+            if isinstance(cause, socket.gaierror):
+                raise _RdError(
+                    "DNS lookup for api.real-debrid.com failed. Your ISP/DNS "
+                    "may be blocking it — try a VPN or DoH (1.1.1.1, 8.8.8.8)."
+                ) from None
+            cause = getattr(cause, "__cause__", None)
+        raise _RdError(
+            "Couldn't reach real-debrid.com. Check your connection or try "
+            "a VPN if your ISP blocks it."
+        ) from None
+
+    s = resp.status_code
+    if s == 204:
+        return None
+    if 200 <= s < 300:
+        # RD returns 200 for GETs and 201 for addMagnet/unrestrict. Both carry JSON.
+        return resp.json()
+    if s == 401:
+        raise _RdError(
+            f"Real-Debrid rejected the token. Check RD_TOKEN or "
+            f"[real_debrid].token in {_config_path()}."
+        )
+    if s == 451:
+        raise _RdError("Real-Debrid is geo-blocked on this connection (HTTP 451). Try a VPN.")
+    if s == 403 and _rd_has_cdn_markers(resp.headers):
+        raise _RdError(
+            "Real-Debrid reachable but returning a block page — likely CDN "
+            "or ISP intermediary. Try a VPN."
+        )
+    if s == 403:
+        raise _RdError("Real-Debrid refused the request (403). Likely account/quota issue.")
+    if s == 429:
+        raise _RdError("Real-Debrid rate limit hit. Wait a minute and retry.")
+    raise _RdError(f"Real-Debrid error {s}. Try again.")
+
+
+def _rd_check_cached(info_hash, token):
+    data = _rd_request("GET", f"/torrents/instantAvailability/{info_hash}", token=token) or {}
+    entry = data.get(info_hash) or data.get(info_hash.upper()) or {}
+    variants = entry.get("rd") if isinstance(entry, dict) else entry
+    return bool(variants)
+
+
+def _rd_add_magnet(magnet, token):
+    data = _rd_request("POST", "/torrents/addMagnet", token=token, data={"magnet": magnet})
+    return data["id"]
+
+
+def _rd_select_files(torrent_id, files, token):
+    _rd_request("POST", f"/torrents/selectFiles/{torrent_id}", token=token, data={"files": files})
+
+
+def _rd_get_info(torrent_id, token):
+    return _rd_request("GET", f"/torrents/info/{torrent_id}", token=token)
+
+
+def _rd_unrestrict(link, token):
+    data = _rd_request("POST", "/unrestrict/link", token=token, data={"link": link})
+    return data["download"]
+
+
+def _rd_prompt_file_selection(files, torrent_name):
+    """Show the interactive file picker. Returns 'cancel' or 'id1,id2,...'."""
+    total = len(files)
+    print(f"\nRD: {total} files in '{torrent_name}'\n")
+    for i, f in enumerate(files, start=1):
+        # path looks like '/some/dir/name.ext' — show only the basename
+        basename = f.get("path", "").rsplit("/", 1)[-1] or f.get("path", "")
+        print(f"  {i:>3}.  [{_human_size(f.get('bytes', 0)):>9}]  {basename}")
+    print(
+        "\nSelect files to debrid:\n"
+        "  - Press Enter or type 'all' for every file\n"
+        "  - Single: 2\n"
+        "  - List:   1,3,5\n"
+        "  - Range:  1-10\n"
+        "  - Mix:    1,3-5,10\n"
+        "  - 'c' to cancel\n"
+    )
+    while True:
+        text = input("> ")
+        parsed = _rd_parse_selection(text, total)
+        if parsed == "cancel":
+            return "cancel"
+        if parsed is None:
+            print("Invalid selection, try again.")
+            continue
+        # Map 1-indexed display positions → RD's own file IDs.
+        ids = [str(files[i - 1]["id"]) for i in parsed]
+        return ",".join(ids)
+
+
+def _rd_apply_action(links, action):
+    if action == "clipboard":
+        if len(links) == 1:
+            pyperclip.copy(links[0])
+            print("Direct link copied to clipboard!")
+        else:
+            pyperclip.copy("\n".join(links))
+            print(f"{len(links)} direct links copied to clipboard (newline-separated).")
+        return
+    if action == "print":
+        print("\n".join(links))
+        return
+    for i, link in enumerate(links):
+        if action == "browser":
+            webbrowser.open(link)
+        elif action == "downie":
+            webbrowser.open("downie://XUL/?url=" + urllib.parse.quote(link, safe=""))
+        if i < len(links) - 1:
+            time.sleep(0.2)
+
+
 # Commands that take a numeric argument and their handlers. Each handler
 # receives the result entry (dict with 'magnet' and 'link' keys).
 def _cmd_m(entry):
@@ -530,6 +756,74 @@ def _cmd_cs(entry):
     webbrowser.open('https://www.seedr.cc', new=2)
     print('Seedr.cc opened and Magnet link copied to clipboard!')
 
+def _cmd_rd(entry):
+    config = _load_config()
+    token = _resolve_rd_token(config)
+    if not token:
+        print(
+            f"Real-Debrid token not configured. Set RD_TOKEN env var or add "
+            f"[real_debrid].token to {_config_path()}. "
+            f"Get a token at https://real-debrid.com/apitoken."
+        )
+        return
+
+    action = _resolve_rd_action(config)
+
+    info_hash = _rd_parse_hash(entry.get("magnet", ""))
+    if info_hash is None:
+        print("Couldn't parse info-hash from magnet.")
+        return
+
+    try:
+        cached = _rd_check_cached(info_hash, token=token)
+
+        if not cached:
+            ans = input("Not cached on Real-Debrid. Submit anyway? Uses your fair-use quota. [y/N] ")
+            if ans.strip().lower() != "y":
+                return
+            torrent_id = _rd_add_magnet(entry["magnet"], token=token)
+            _rd_select_files(torrent_id, "all", token=token)
+            webbrowser.open("https://real-debrid.com/torrents")
+            print("Submitted. Run the same rd command again once it's ready.")
+            return
+
+        print("Cached on Real-Debrid. Fetching direct link...")
+        torrent_id = _rd_add_magnet(entry["magnet"], token=token)
+
+        # Peek once to see how many files RD parsed out.
+        info = _rd_get_info(torrent_id, token=token)
+        files = info.get("files") or []
+        if len(files) <= 1:
+            selection = "all"
+        else:
+            torrent_name = entry.get("name", info.get("filename", "this torrent"))
+            selection = _rd_prompt_file_selection(files, torrent_name=torrent_name)
+            if selection == "cancel":
+                print("Cancelled. Torrent not debrided.")
+                return
+
+        _rd_select_files(torrent_id, selection, token=token)
+        info = _rd_get_info(torrent_id, token=token)
+
+        bad_statuses = ("error", "magnet_error", "virus", "dead")
+        status = info.get("status")
+        if status in bad_statuses:
+            print(f"Real-Debrid marked the torrent as {status}. Try a different source.")
+            return
+
+        links = info.get("links") or []
+        if not links:
+            # Cached but RD hasn't populated links yet (brief lag between selectFiles and
+            # 'downloaded' state). No polling per spec — ask user to re-run.
+            print(f"Real-Debrid hasn't finished processing yet (status: {status}). Run the rd command again in a moment.")
+            return
+
+        direct_links = [_rd_unrestrict(link, token=token) for link in links]
+        _rd_apply_action(direct_links, action)
+
+    except _RdError as e:
+        print(str(e))
+
 def _cmd_d(entry):
     webbrowser.open(entry['magnet'], new=2)
     print('Magnet link sent to default torrent client!')
@@ -538,21 +832,29 @@ def _cmd_o(entry):
     webbrowser.open(entry['link'], new=2)
     print('Torrent page opened in default browser!')
 
-# Longer prefixes must come first so 'cs' matches before 'c'.
-_NUMERIC_CMDS = [('cs', _cmd_cs), ('c', _cmd_c), ('m', _cmd_m), ('d', _cmd_d), ('o', _cmd_o)]
+# Longer prefixes must come first so 'cs' matches before 'c', and 'rd' before 'r<n>' if one ever exists.
+# Handler names (strings) are resolved at dispatch time via globals() so that patch.object() works in tests.
+_NUMERIC_CMDS = [
+    ('rd', '_cmd_rd'),
+    ('cs', '_cmd_cs'),
+    ('c', '_cmd_c'),
+    ('m', '_cmd_m'),
+    ('d', '_cmd_d'),
+    ('o', '_cmd_o'),
+]
 
 def switch(arg):
     global exit, query
 
     # Numeric commands: m<n>, c<n>, cs<n>, d<n>, o<n>
-    for prefix, handler in _NUMERIC_CMDS:
+    for prefix, handler_name in _NUMERIC_CMDS:
         match = re.match(rf'^{prefix}(\d+)$', arg)
         if match:
             entry = _get_entry(int(match.group(1)))
             if entry is None:
                 print('Invalid command!\n')
             else:
-                handler(entry)
+                globals()[handler_name](entry)
             return
 
     # Commands with no argument
@@ -591,9 +893,10 @@ def print_menu(arg=0):
         3. d<result number> - Download torrent using default torrent client
         4. o<result number> - Open the torrent page of the selected torrent in the default browser
         5. cs<result number> - Copy magnet link and open seedr.cc
-        6. p - Re-print top 10 results for the last search
-        7. s - Enter a new query to search for over all available torrent websites
-        8. r - Repeat last search (with same query)
+        6. rd<result number> - Debrid and download via Real-Debrid (requires token)
+        7. p - Re-print top 10 results for the last search
+        8. s - Enter a new query to search for over all available torrent websites
+        9. r - Repeat last search (with same query)
         ------------------------''')
     elif arg == 1:
         print('''
