@@ -8,10 +8,14 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
-- YTS as a second torrent source (movies, JSON API, no Cloudflare)
-- YTS fallback domain chain (yts.lt, yts.am, yts.mx, yts.rs)
+- YTS as a torrent source (movies, JSON API, no Cloudflare, fallback domain chain)
+- EZTV as a torrent source (TV shows via IMDB lookup, episode/quality/keyword filtering, fallback domain chain)
 - Quality tags in YTS results (`[720p]`, `[1080p]`, `[2160p]`)
-- 8 new YTS parser tests (30 total)
+- 34 new tests (56 total): YTS parser, EZTV parser, episode query parsing, IMDB bridge, domain fallback
+
+### Fixed
+- TPB links now use the working mirror domain instead of relative paths
+- YTS links now use the working mirror domain instead of whatever the API returned
 
 ## [2.3.1] - 2026-04-16
 
