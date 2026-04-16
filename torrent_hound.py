@@ -20,12 +20,20 @@
 
 import argparse
 import json
+import os
+from pathlib import Path
 import re
 import sys
 import urllib.parse
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
 
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib  # backport; same API surface we use
+
+import platformdirs
 import pyperclip
 import requests
 from bs4 import BeautifulSoup
@@ -55,6 +63,34 @@ class colored:
     def magenta(s): return f"\x1b[35m{s}\x1b[0m"
 
 defaultQuery, query = 'ubuntu', ''
+
+# --- Config file (~/.config/torrent-hound/config.toml on Linux/macOS;
+# %APPDATA%\torrent-hound\config.toml on Windows). Missing file is
+# non-fatal. Malformed TOML prints a one-line warning and acts as if
+# no config exists.
+def _config_path():
+    return Path(platformdirs.user_config_dir("torrent-hound")) / "config.toml"
+
+
+def _load_config():
+    path = _config_path()
+    if not path.is_file():
+        return {}
+    try:
+        with path.open("rb") as f:
+            return tomllib.load(f)
+    except (tomllib.TOMLDecodeError, OSError, UnicodeDecodeError) as e:
+        print(f"Config file {path} is not valid TOML: {e}")
+        return {}
+
+
+def _resolve_rd_token(config):
+    env = os.environ.get("RD_TOKEN")
+    if env:
+        return env
+    return (config.get("real_debrid") or {}).get("token") or None
+
+
 results_tpb_condensed = None
 results_1337x = None
 results_yts = None
