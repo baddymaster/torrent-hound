@@ -575,7 +575,7 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
 
     if not quiet_mode:
         names = ", ".join(name for name, _ in _SOURCES)
-        print(colored.magenta(f"Searching {names}..."), end='')
+        print(colored.magenta(f"Searching {names}...\n"), end='')
 
     # Fan out all source searches in parallel.
     with ThreadPoolExecutor(max_workers=max(1, len(_SOURCES))) as pool:
