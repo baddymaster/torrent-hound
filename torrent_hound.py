@@ -1037,7 +1037,7 @@ def main():
     global query, exit
 
     parser = argparse.ArgumentParser(prog="torrent-hound")
-    parser.add_argument("query", help="Specify the search query", nargs='*', default=defaultQuery)
+    parser.add_argument("query", help="Specify the search query", nargs='*', default=[])
     parser.add_argument('-q', '--quiet', help='Print output of search without any additional options', default=False, action='store_true')
     parser.add_argument('--json', help='Print results as JSON (implies --quiet)', default=False, action='store_true', dest='as_json')
     parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {__version__}')
