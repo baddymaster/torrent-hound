@@ -112,10 +112,22 @@ def _resolve_rd_action(config):
 
 
 def _save_config(config):
-    """Write config dict to the resolved config path. Creates parent dirs."""
+    """Write config dict to the resolved config path. Creates parent dirs.
+
+    The file contains a bearer token; force 0600 on the file and 0700 on the
+    parent dir (re-apply on overwrite in case a prior version was more open).
+    """
     path = _config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.parent.chmod(0o700)
+    except (OSError, NotImplementedError):
+        pass  # best-effort on platforms without POSIX perms (e.g. Windows)
     path.write_text(tomli_w.dumps(config), encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except (OSError, NotImplementedError):
+        pass
 
 
 def _prompt_rd_token():

@@ -90,6 +90,34 @@ def test_save_config_creates_dir_and_writes_toml(th, tmp_path):
     assert 'action = "downie"' in content
 
 
+def test_save_config_uses_restrictive_permissions(th, tmp_path):
+    import stat
+    import sys as _sys
+    if _sys.platform == "win32":
+        pytest.skip("POSIX permission semantics don't apply on Windows")
+    path = tmp_path / "subdir" / "config.toml"
+    with patch.object(th, "_config_path", lambda: path):
+        th._save_config({"real_debrid": {"token": "secret"}})
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+
+
+def test_save_config_hardens_existing_loose_permissions(th, tmp_path):
+    # Simulates an older config file left with 0644 — must be tightened on overwrite.
+    import stat
+    import sys as _sys
+    if _sys.platform == "win32":
+        pytest.skip("POSIX permission semantics don't apply on Windows")
+    path = tmp_path / "config.toml"
+    path.write_text('[real_debrid]\ntoken = "old"\n', encoding="utf-8")
+    path.chmod(0o644)
+    path.parent.chmod(0o755)
+    with patch.object(th, "_config_path", lambda: path):
+        th._save_config({"real_debrid": {"token": "new"}})
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+
+
 def test_save_config_preserves_existing_action(th, tmp_path):
     path = tmp_path / "config.toml"
     path.write_text('[real_debrid]\naction = "print"\n', encoding="utf-8")
