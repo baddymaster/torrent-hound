@@ -24,6 +24,17 @@ Enter command : c1
 Magnet link copied to clipboard!
 ```
 
+## Sources
+
+| Source         | Content    | Method                          |
+|----------------|------------|---------------------------------|
+| The Pirate Bay | General    | HTML scrape, mirror fallback    |
+| YTS            | Movies     | JSON API, mirror fallback       |
+| EZTV           | TV shows   | JSON API via IMDB lookup        |
+
+All sources are searched in parallel. EZTV supports episode and quality
+filtering — e.g. `torrent-hound "severance s02e05 1080p"`.
+
 ## Requirements
 
 - Python 3.9+
