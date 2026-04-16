@@ -771,6 +771,21 @@ def _rd_prompt_file_selection(files, torrent_name):
 
 
 def _rd_apply_action(links, action):
+    # Defense against a hostile or MITM'd RD response: only accept https:// direct
+    # links. A file://, javascript:, tel:, or custom-scheme URL would otherwise
+    # reach the user's browser or Downie unchecked.
+    safe = []
+    for link in links:
+        if urllib.parse.urlparse(link).scheme == "https":
+            safe.append(link)
+        else:
+            scheme = urllib.parse.urlparse(link).scheme or "(none)"
+            print(f"Skipping link with unexpected scheme '{scheme}'.")
+    if not safe:
+        print("No usable direct links from Real-Debrid.")
+        return
+    links = safe
+
     if action == "clipboard":
         if len(links) == 1:
             pyperclip.copy(links[0])

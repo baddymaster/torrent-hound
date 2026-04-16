@@ -317,22 +317,22 @@ def test_apply_action_clipboard_single(th, capsys):
 
 def test_apply_action_clipboard_multiple(th, capsys):
     with patch.object(th.pyperclip, "copy") as m_copy:
-        th._rd_apply_action(["a", "b", "c"], "clipboard")
-    m_copy.assert_called_once_with("a\nb\nc")
+        th._rd_apply_action(["https://a", "https://b", "https://c"], "clipboard")
+    m_copy.assert_called_once_with("https://a\nhttps://b\nhttps://c")
     out = capsys.readouterr().out
     assert "3 direct links" in out
 
 
 def test_apply_action_print(th, capsys):
-    th._rd_apply_action(["a", "b"], "print")
+    th._rd_apply_action(["https://a", "https://b"], "print")
     out = capsys.readouterr().out
-    assert "a\nb" in out
+    assert "https://a\nhttps://b" in out
 
 
 def test_apply_action_browser(th):
     with patch.object(th.webbrowser, "open") as m_open, patch.object(th.time, "sleep"):
-        th._rd_apply_action(["u1", "u2"], "browser")
-    assert m_open.call_args_list == [(("u1",),), (("u2",),)]
+        th._rd_apply_action(["https://u1", "https://u2"], "browser")
+    assert m_open.call_args_list == [(("https://u1",),), (("https://u2",),)]
 
 
 def test_apply_action_downie_url_encodes(th):
@@ -345,9 +345,40 @@ def test_apply_action_downie_url_encodes(th):
 
 def test_apply_action_downie_multiple_sleeps_between(th):
     with patch.object(th.webbrowser, "open"), patch.object(th.time, "sleep") as m_sleep:
-        th._rd_apply_action(["a", "b", "c"], "downie")
+        th._rd_apply_action(["https://a", "https://b", "https://c"], "downie")
     # Sleeps between links, not after the last
     assert m_sleep.call_count == 2
+
+
+@pytest.mark.parametrize("bad_scheme", [
+    "file:///etc/passwd",
+    "javascript:alert(1)",
+    "tel:+15551234567",
+    "shortcuts://run?x=y",
+    "http://insecure.example/file",  # http is not allowed — only https
+    "no-scheme-at-all",
+    "",
+])
+def test_apply_action_rejects_non_https_schemes(th, capsys, bad_scheme):
+    with patch.object(th.pyperclip, "copy") as m_copy, \
+         patch.object(th.webbrowser, "open") as m_open:
+        th._rd_apply_action([bad_scheme], "clipboard")
+    m_copy.assert_not_called()
+    m_open.assert_not_called()
+    out = capsys.readouterr().out
+    assert "unexpected scheme" in out or "No usable" in out
+
+
+def test_apply_action_filters_mixed_bad_and_good(th, capsys):
+    with patch.object(th.pyperclip, "copy") as m_copy:
+        th._rd_apply_action(
+            ["https://good.example/one", "file:///etc/passwd", "https://good.example/two"],
+            "clipboard",
+        )
+    # Only the two https links make it through, joined
+    m_copy.assert_called_once_with("https://good.example/one\nhttps://good.example/two")
+    out = capsys.readouterr().out
+    assert "unexpected scheme 'file'" in out
 
 
 # --- _cmd_rd orchestrator ------------------------------------------------
@@ -406,7 +437,7 @@ def test_cmd_rd_cached_multi_file_prompts(th, monkeypatch):
          patch.object(th, "_rd_add_magnet", return_value="tid"), \
          patch.object(th, "_rd_select_files") as m_select, \
          patch.object(th, "_rd_get_info", return_value=info), \
-         patch.object(th, "_rd_unrestrict", side_effect=["d1", "d2"]), \
+         patch.object(th, "_rd_unrestrict", side_effect=["https://d1", "https://d2"]), \
          patch("builtins.input", return_value="1,2"), \
          patch.object(th.pyperclip, "copy"):
         th._cmd_rd(_entry())
