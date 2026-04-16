@@ -32,3 +32,15 @@ def tpb_ubuntu_html():
 def yts_interstellar_json():
     """Real captured YTS API response for 'interstellar'."""
     return json.loads((FIXTURES / "yts_search_interstellar.json").read_text())
+
+
+@pytest.fixture
+def eztv_severance_json():
+    """Real captured EZTV API response for Severance (IMDB 11280740)."""
+    return json.loads((FIXTURES / "eztv_search_severance.json").read_text())
+
+
+@pytest.fixture
+def imdb_suggestion_severance_json():
+    """Real captured IMDB suggestion response for 'severance'."""
+    return json.loads((FIXTURES / "imdb_suggestion_severance.json").read_text())
