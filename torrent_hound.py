@@ -706,8 +706,8 @@ def _rd_request(method, path, token, data=None):
             ) from None
     if s == 401:
         raise _RdError(
-            f"Real-Debrid rejected the token. Check RD_TOKEN or "
-            f"[real_debrid].token in {_config_path()}."
+            "Real-Debrid rejected the token. Check RD_TOKEN or "
+            "[real_debrid].token — run `torrent-hound --config-path` to find the file."
         )
     if s == 451:
         raise _RdError("Real-Debrid is geo-blocked on this connection (HTTP 451). Try a VPN.")
