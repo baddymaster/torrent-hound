@@ -204,6 +204,16 @@ def test_rd_request_204_no_content(th):
         assert th._rd_request("POST", "/x", token="t") is None
 
 
+def test_rd_request_200_non_json_raises_rd_error(th):
+    # Captive portal / transparent proxy returning HTML with HTTP 200
+    resp = _mk_response(200)
+    resp.json.side_effect = ValueError("Expecting value")
+    with patch.object(th.requests, "request", return_value=resp):
+        with pytest.raises(th._RdError) as exc:
+            th._rd_request("GET", "/x", token="t")
+    assert "non-JSON" in str(exc.value) or "captive portal" in str(exc.value).lower()
+
+
 # --- Endpoint wrappers ---------------------------------------------------
 
 def test_rd_check_cached_true(th):
@@ -529,3 +539,29 @@ def test_cmd_rd_rd_error_printed_not_raised(th, capsys, monkeypatch):
          patch.object(th, "_rd_check_cached", side_effect=th._RdError("my msg")):
         th._cmd_rd(_entry())  # must not raise
     assert "my msg" in capsys.readouterr().out
+
+
+def test_cmd_rd_keyerror_in_addmagnet_does_not_crash(th, capsys, monkeypatch):
+    # If RD returns 201 but the JSON body lacks the 'id' key, _rd_add_magnet raises
+    # KeyError. _cmd_rd must catch it and print a friendly message instead of crashing.
+    monkeypatch.setenv("RD_TOKEN", "tok")
+    with patch.object(th, "_load_config", return_value={}), \
+         patch.object(th, "_rd_check_cached", return_value=True), \
+         patch.object(th, "_rd_add_magnet", side_effect=KeyError("id")):
+        th._cmd_rd(_entry())  # must not raise
+    out = capsys.readouterr().out
+    assert "Unexpected Real-Debrid response" in out
+    assert "KeyError" in out
+
+
+def test_cmd_rd_typeerror_in_unrestrict_does_not_crash(th, capsys, monkeypatch):
+    monkeypatch.setenv("RD_TOKEN", "tok")
+    with patch.object(th, "_load_config", return_value={}), \
+         patch.object(th, "_rd_check_cached", return_value=True), \
+         patch.object(th, "_rd_add_magnet", return_value="tid"), \
+         patch.object(th, "_rd_select_files"), \
+         patch.object(th, "_rd_get_info", return_value=_fake_info()), \
+         patch.object(th, "_rd_unrestrict", side_effect=TypeError("None is not subscriptable")):
+        th._cmd_rd(_entry())  # must not raise
+    out = capsys.readouterr().out
+    assert "Unexpected Real-Debrid response" in out

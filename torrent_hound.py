@@ -695,7 +695,15 @@ def _rd_request(method, path, token, data=None):
         return None
     if 200 <= s < 300:
         # RD returns 200 for GETs and 201 for addMagnet/unrestrict. Both carry JSON.
-        return resp.json()
+        try:
+            return resp.json()
+        except ValueError:
+            # 200 OK but body isn't JSON — typically a captive portal or transparent
+            # proxy intercepting the request. Don't leak the raw HTML.
+            raise _RdError(
+                "Real-Debrid returned a non-JSON response. Likely a captive portal "
+                "or proxy; check your connection."
+            ) from None
     if s == 401:
         raise _RdError(
             f"Real-Debrid rejected the token. Check RD_TOKEN or "
@@ -887,6 +895,10 @@ def _cmd_rd(entry):
 
     except _RdError as e:
         print(str(e))
+    except (KeyError, TypeError) as e:
+        # Defence against unexpected RD response shapes (missing 'id' / 'download' / etc.)
+        # or API version drift. Print a friendly message instead of crashing the REPL.
+        print(f"Unexpected Real-Debrid response shape ({type(e).__name__}). Try again.")
 
 def _cmd_d(entry):
     webbrowser.open(entry['magnet'], new=2)
