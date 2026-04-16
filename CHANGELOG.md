@@ -7,6 +7,12 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-04-16
+
+### Changed
+- Version now derived from git tags via `setuptools-scm` (no manual version bumps needed)
+- Removed lockfile from CI (incompatible with multi-Python matrix)
+
 ## [2.3.0] - 2026-04-16
 
 ### Added
