@@ -78,3 +78,99 @@ def test_resolve_rd_action_unknown_warns_and_falls_back(th, capsys):
     out = capsys.readouterr().out
     assert "Unknown rd action 'bogus'" in out
     assert "clipboard" in out
+
+
+def test_save_config_creates_dir_and_writes_toml(th, tmp_path):
+    path = tmp_path / "sub" / "dir" / "config.toml"  # parent dirs don't exist yet
+    with patch.object(th, "_config_path", lambda: path):
+        th._save_config({"real_debrid": {"token": "abc", "action": "downie"}})
+    assert path.is_file()
+    content = path.read_text(encoding="utf-8")
+    assert 'token = "abc"' in content
+    assert 'action = "downie"' in content
+
+
+def test_save_config_preserves_existing_action(th, tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text('[real_debrid]\naction = "print"\n', encoding="utf-8")
+    with patch.object(th, "_config_path", lambda: path):
+        cfg = th._load_config()
+        cfg["real_debrid"]["token"] = "new-token"
+        th._save_config(cfg)
+    # Re-load and verify both keys present
+    with patch.object(th, "_config_path", lambda: path):
+        reloaded = th._load_config()
+    assert reloaded["real_debrid"]["token"] == "new-token"
+    assert reloaded["real_debrid"]["action"] == "print"
+
+
+def test_cmd_set_rd_token_writes_token(th, tmp_path, capsys):
+    path = tmp_path / "config.toml"
+    with patch.object(th, "_config_path", lambda: path), \
+         patch.object(th, "_prompt_rd_token", return_value="my-token"):
+        rc = th._cmd_set_rd_token()
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "token saved" in out.lower()
+    assert "my-token" not in out  # MUST not echo the token
+    with patch.object(th, "_config_path", lambda: path):
+        cfg = th._load_config()
+    assert cfg["real_debrid"]["token"] == "my-token"
+
+
+def test_cmd_set_rd_token_preserves_existing_action(th, tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text('[real_debrid]\naction = "browser"\n', encoding="utf-8")
+    with patch.object(th, "_config_path", lambda: path), \
+         patch.object(th, "_prompt_rd_token", return_value="tok"):
+        rc = th._cmd_set_rd_token()
+    assert rc == 0
+    with patch.object(th, "_config_path", lambda: path):
+        cfg = th._load_config()
+    assert cfg["real_debrid"]["token"] == "tok"
+    assert cfg["real_debrid"]["action"] == "browser"
+
+
+def test_cmd_set_rd_token_empty_aborts(th, tmp_path, capsys):
+    path = tmp_path / "config.toml"
+    with patch.object(th, "_config_path", lambda: path), \
+         patch.object(th, "_prompt_rd_token", return_value=""):
+        rc = th._cmd_set_rd_token()
+    assert rc == 1
+    assert "aborting" in capsys.readouterr().out.lower()
+    assert not path.exists()  # no file created on abort
+
+
+def test_cmd_set_rd_token_write_failure(th, tmp_path, capsys):
+    def fail_save(_):
+        raise OSError("disk full")
+    with patch.object(th, "_prompt_rd_token", return_value="tok"), \
+         patch.object(th, "_save_config", side_effect=fail_save):
+        rc = th._cmd_set_rd_token()
+    assert rc == 1
+    assert "failed to write" in capsys.readouterr().out.lower()
+
+
+def test_cmd_print_config_path_prints_path(th, tmp_path, capsys):
+    fake = tmp_path / "config.toml"
+    with patch.object(th, "_config_path", lambda: fake):
+        rc = th._cmd_print_config_path()
+    assert rc == 0
+    assert str(fake) in capsys.readouterr().out
+
+
+def test_prompt_rd_token_tty_uses_getpass(th):
+    with patch.object(th.sys.stdin, "isatty", return_value=True), \
+         patch.object(th.getpass, "getpass", return_value="tty-token") as m_gp:
+        result = th._prompt_rd_token()
+    assert result == "tty-token"
+    m_gp.assert_called_once()
+
+
+def test_prompt_rd_token_piped_reads_stdin(th):
+    class FakeStdin:
+        def isatty(self): return False
+        def readline(self): return "piped-token\n"
+    with patch.object(th.sys, "stdin", FakeStdin()):
+        result = th._prompt_rd_token()
+    assert result == "piped-token"

@@ -190,6 +190,13 @@ token  = "XXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 action = "downie"
 ```
 
+### Convenience flags
+
+```
+torrent-hound --set-rd-token     # prompts for the token (input hidden) and writes it to config.toml
+torrent-hound --config-path      # prints the resolved config file path
+```
+
 ### Action modes
 
 Set `action` to one of:

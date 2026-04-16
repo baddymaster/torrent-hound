@@ -16,6 +16,7 @@ dependencies = [
     "rich>=13.0",
     "platformdirs>=4.0",
     "tomli>=2.0; python_version<'3.11'",
+    "tomli_w>=1.0",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

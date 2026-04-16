@@ -1,5 +1,6 @@
 tasks/
 release.sh
+config.toml
 .venv/
 __pycache__/
 *.pyc

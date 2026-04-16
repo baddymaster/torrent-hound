@@ -11,10 +11,13 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Real-Debrid integration via `rd<n>` command (cached-check, interactive multi-file picker, configurable action: clipboard/print/browser/downie)
 - TOML config file at `~/.config/torrent-hound/config.toml` (first time the project has one)
 - `RD_TOKEN` env var for ad-hoc use without editing the config file
+- `--set-rd-token` CLI flag for secure interactive token entry (no shell history exposure)
+- `--config-path` CLI flag to print the resolved config file path
 
 ### Dependencies
 - Added `platformdirs>=4.0` (config directory resolution)
 - Added `tomli>=2.0; python_version<'3.11'` (TOML backport for Python 3.9/3.10)
+- Added `tomli_w>=1.0` (TOML writer for the `--set-rd-token` flow; stdlib `tomllib` is read-only)
 
 ## [2.4.2] - 2026-04-16
 

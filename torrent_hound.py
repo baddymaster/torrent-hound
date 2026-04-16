@@ -20,6 +20,7 @@
 
 import argparse
 import base64
+import getpass
 import json
 import os
 import re
@@ -39,6 +40,7 @@ else:
 import platformdirs
 import pyperclip
 import requests
+import tomli_w
 from bs4 import BeautifulSoup
 from rich.console import Console
 from rich.table import Table
@@ -107,6 +109,41 @@ def _resolve_rd_action(config):
         return value
     print(f"Unknown rd action '{value}' in config; using clipboard")
     return "clipboard"
+
+
+def _save_config(config):
+    """Write config dict to the resolved config path. Creates parent dirs."""
+    path = _config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(tomli_w.dumps(config), encoding="utf-8")
+
+
+def _prompt_rd_token():
+    if sys.stdin.isatty():
+        return getpass.getpass("Real-Debrid token (input hidden): ").strip()
+    return sys.stdin.readline().strip()
+
+
+def _cmd_set_rd_token():
+    """Prompt for a token and save it, preserving other config keys. Returns exit code."""
+    token = _prompt_rd_token()
+    if not token:
+        print("No token entered; aborting.")
+        return 1
+    config = _load_config()
+    config.setdefault("real_debrid", {})["token"] = token
+    try:
+        _save_config(config)
+    except OSError as e:
+        print(f"Failed to write config: {e}")
+        return 1
+    print(f"Real-Debrid token saved to {_config_path()}")
+    return 0
+
+
+def _cmd_print_config_path():
+    print(_config_path())
+    return 0
 
 
 results_tpb_condensed = None
@@ -1000,12 +1037,19 @@ def main():
     global query, exit
 
     parser = argparse.ArgumentParser(prog="torrent-hound")
-    parser.add_argument("query", help="Specify the search query", nargs='+', default=defaultQuery)
+    parser.add_argument("query", help="Specify the search query", nargs='*', default=defaultQuery)
     parser.add_argument('-q', '--quiet', help='Print output of search without any additional options', default=False, action='store_true')
     parser.add_argument('--json', help='Print results as JSON (implies --quiet)', default=False, action='store_true', dest='as_json')
     parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {__version__}')
+    parser.add_argument('--set-rd-token', help='Prompt for a Real-Debrid token and save it to config', default=False, action='store_true', dest='set_rd_token')
+    parser.add_argument('--config-path', help='Print the resolved config file path and exit', default=False, action='store_true', dest='config_path')
 
     args = parser.parse_args()
+
+    if args.config_path:
+        sys.exit(_cmd_print_config_path())
+    if args.set_rd_token:
+        sys.exit(_cmd_set_rd_token())
 
     if args.query:
         query = ' '.join(args.query)
