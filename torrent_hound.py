@@ -62,7 +62,7 @@ results_eztv = None
 results, results_rarbg, exit = None, None, None
 num_results = 0
 tpb_working_domain = 'thepiratebay.zone'
-tpb_url, url_1337x = '', ''
+tpb_url, yts_url, eztv_url, url_1337x = '', '', '', ''
 
 def extract_magnet_link_1337x(url):
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
@@ -258,6 +258,7 @@ def _parse_yts_json(data, domain='yts.mx', limit=10):
 
 def searchYTS(search_string='', quiet_mode=False, limit=10, timeout=8):
     """Search YTS, trying known mirrors in order."""
+    global yts_url
     for domain in YTS_DOMAINS:
         url = f"https://{domain}/api/v2/list_movies.json?query_term={urllib.parse.quote_plus(search_string)}&limit=20&sort_by=seeds"
         try:
@@ -266,6 +267,7 @@ def searchYTS(search_string='', quiet_mode=False, limit=10, timeout=8):
             if data.get("status") == "ok":
                 parsed = _parse_yts_json(data, domain=domain, limit=limit)
                 if parsed:
+                    yts_url = url
                     return parsed
         except (requests.RequestException, ValueError):
             continue
@@ -379,6 +381,7 @@ def _parse_eztv_json(torrents, domain='eztvx.to', season=None, episode=None, fil
 
 def searchEZTV(search_string='', quiet_mode=False, limit=10, timeout=8):
     """Search EZTV for TV shows via IMDB ID bridge + optional episode/quality filtering."""
+    global eztv_url
     clean_query, season, episode, filters = _parse_episode_query(search_string)
 
     imdb_id = _imdb_lookup(clean_query, timeout=timeout)
@@ -404,6 +407,7 @@ def searchEZTV(search_string='', quiet_mode=False, limit=10, timeout=8):
                     break
             if all_torrents:
                 working_domain = domain
+                eztv_url = f"https://{domain}/api/get-torrents?imdb_id={imdb_id}"
                 break
         except (requests.RequestException, ValueError):
             all_torrents = []
@@ -517,7 +521,12 @@ def switch(arg):
 
     # Commands with no argument
     if arg == 'u':
-        print(colored.green('[PirateBay] URL') + ' : ' + tpb_url)
+        if tpb_url:
+            print(colored.green('[PirateBay] URL') + ' : ' + tpb_url)
+        if yts_url:
+            print(colored.green('[YTS] URL') + ' : ' + yts_url)
+        if eztv_url:
+            print(colored.green('[EZTV] URL') + ' : ' + eztv_url)
     elif arg == 'h':
         print_menu(0)
     elif arg == 'q':
