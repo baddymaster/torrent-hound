@@ -464,12 +464,18 @@ def test_cmd_rd_no_token_prints_help(th, capsys, monkeypatch):
 
 
 def test_cmd_rd_cached_single_file_clipboard(th, capsys, monkeypatch):
+    # Models the real RD lifecycle: peek response (files present, no links yet)
+    # followed by post-select response (files + links). Previously both calls
+    # returned the same object, which hid the two-phase structure.
     monkeypatch.setenv("RD_TOKEN", "tok")
+    peek = _fake_info(files=[{"id": 1, "path": "/x.mkv", "bytes": 1024}], links=[])
+    post = _fake_info(files=[{"id": 1, "path": "/x.mkv", "bytes": 1024}],
+                     links=["https://rd/link-1"])
     with patch.object(th, "_load_config", return_value={}), \
          patch.object(th, "_rd_check_cached", return_value=True), \
          patch.object(th, "_rd_add_magnet", return_value="tid"), \
          patch.object(th, "_rd_select_files") as m_select, \
-         patch.object(th, "_rd_get_info", return_value=_fake_info()), \
+         patch.object(th, "_rd_get_info", side_effect=[peek, post]), \
          patch.object(th, "_rd_unrestrict", return_value="https://d.rd/x"), \
          patch.object(th.pyperclip, "copy") as m_copy:
         th._cmd_rd(_entry())
