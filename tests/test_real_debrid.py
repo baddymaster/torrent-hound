@@ -80,6 +80,10 @@ def test_parse_selection_cancel(th):
     "1-",
     "-3",
     "1-3-5",
+    "\u0663",          # Arabic-Indic digit 3 — int() would accept; parser must reject
+    "\uff13",          # fullwidth digit 3
+    "\uff11,\uff12",  # fullwidth list
+    "1,\u0662,3",      # mixed ASCII + Arabic-Indic
 ])
 def test_parse_selection_invalid_returns_none(th, text):
     assert th._rd_parse_selection(text, 5) is None

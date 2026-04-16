@@ -626,6 +626,10 @@ def _rd_parse_selection(text, total):
         return "cancel"
     if s in ("", "all"):
         return list(range(1, total + 1))
+    if not s.isascii():
+        # Python's int() accepts Unicode decimals (Arabic-Indic, fullwidth, etc.).
+        # Reject here so the picker never silently parses non-ASCII digits.
+        return None
 
     picks = set()
     for part in s.split(","):
