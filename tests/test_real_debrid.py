@@ -556,17 +556,21 @@ def test_cmd_rd_bad_hash(th, capsys, monkeypatch):
     assert "parse info-hash" in capsys.readouterr().out
 
 
-def test_cmd_rd_torrent_error_status(th, capsys, monkeypatch):
+@pytest.mark.parametrize("bad_status", ["error", "magnet_error", "virus", "dead"])
+def test_cmd_rd_torrent_error_status(th, capsys, monkeypatch, bad_status):
     monkeypatch.setenv("RD_TOKEN", "tok")
-    info_err = _fake_info(status="magnet_error")
+    info_err = _fake_info(status=bad_status)
     with patch.object(th, "_load_config", return_value={}), \
          patch.object(th, "_rd_check_cached", return_value=True), \
          patch.object(th, "_rd_add_magnet", return_value="tid"), \
          patch.object(th, "_rd_select_files"), \
-         patch.object(th, "_rd_get_info", return_value=info_err):
+         patch.object(th, "_rd_get_info", return_value=info_err), \
+         patch.object(th, "_rd_unrestrict") as m_unrestrict:
         th._cmd_rd(_entry())
+    m_unrestrict.assert_not_called()  # bail before unrestrict
     out = capsys.readouterr().out
-    assert "magnet_error" in out
+    assert bad_status in out
+    assert "Try a different source" in out
 
 
 def test_cmd_rd_cached_but_links_not_ready(th, capsys, monkeypatch):
