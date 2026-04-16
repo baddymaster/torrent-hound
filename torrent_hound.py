@@ -31,7 +31,11 @@ from bs4 import BeautifulSoup
 from rich.console import Console
 from rich.table import Table
 
-__version__ = "2.3.0"
+try:
+    from importlib.metadata import version as _pkg_version
+    __version__ = _pkg_version("torrent-hound")
+except Exception:
+    __version__ = "dev"
 
 console = Console()
 
