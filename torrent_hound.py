@@ -748,14 +748,34 @@ def _rd_unrestrict(link, token):
     return data["download"]
 
 
+_ANSI_ESCAPE_RE = re.compile(
+    r'\x1b\][\s\S]*?(?:\x07|\x1b\\)'      # OSC ... (BEL or ST terminator)
+    r'|\x1b\[[0-?]*[ -/]*[@-~]'           # CSI ... final-byte
+    r'|\x1b[@-_]'                          # ESC + single final byte (SS2, SS3, etc.)
+    r'|\x1b'                               # Stray / unterminated ESC
+    r'|[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]'   # C0 controls + DEL (keep \t \n \r)
+)
+
+
+def _strip_ansi(s):
+    """Remove ANSI escape sequences and C0 control characters.
+
+    Torrent names and filenames come from untrusted sources. A malicious uploader
+    could inject escape sequences that clear the terminal, overwrite the file
+    picker with spoofed rows, or rewrite the [y/N] confirmation prompt. Strip
+    them before printing anything externally sourced.
+    """
+    return _ANSI_ESCAPE_RE.sub('', s)
+
+
 def _rd_prompt_file_selection(files, torrent_name):
     """Show the interactive file picker. Returns 'cancel' or 'id1,id2,...'."""
     total = len(files)
-    print(f"\nRD: {total} files in '{torrent_name}'\n")
+    print(f"\nRD: {total} files in '{_strip_ansi(torrent_name)}'\n")
     for i, f in enumerate(files, start=1):
         # path looks like '/some/dir/name.ext' — show only the basename
         basename = f.get("path", "").rsplit("/", 1)[-1] or f.get("path", "")
-        print(f"  {i:>3}.  [{_human_size(f.get('bytes', 0)):>9}]  {basename}")
+        print(f"  {i:>3}.  [{_human_size(f.get('bytes', 0)):>9}]  {_strip_ansi(basename)}")
     print(
         "\nSelect files to debrid:\n"
         "  - Press Enter or type 'all' for every file\n"

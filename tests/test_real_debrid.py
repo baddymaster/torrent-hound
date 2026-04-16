@@ -316,6 +316,51 @@ def test_prompt_file_selection_reprompts_on_invalid(th, capsys):
     assert "Invalid selection" in out
 
 
+def test_prompt_file_selection_strips_ansi_from_torrent_name(th, capsys):
+    # Malicious uploader injects ANSI clear-screen + fake content into torrent name
+    hostile_name = "legit.movie\x1b[2J\x1b[Hfake content"
+    with patch("builtins.input", return_value="c"):
+        th._rd_prompt_file_selection(_fake_rd_files(), torrent_name=hostile_name)
+    out = capsys.readouterr().out
+    assert "\x1b" not in out
+    assert "legit.moviefake content" in out  # text preserved, escapes stripped
+
+
+def test_prompt_file_selection_strips_ansi_from_filenames(th, capsys):
+    hostile_files = [
+        {"id": 1, "path": "/normal.mkv", "bytes": 1024},
+        {"id": 2, "path": "/evil\x1b[Arewritten.mkv", "bytes": 1024},
+    ]
+    with patch("builtins.input", return_value="c"):
+        th._rd_prompt_file_selection(hostile_files, torrent_name="t")
+    out = capsys.readouterr().out
+    assert "\x1b" not in out
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("plain", "plain"),
+    ("with\x1b[31m color\x1b[0m reset", "with color reset"),
+    ("clear\x1b[2Jscreen", "clearscreen"),
+    ("cursor\x1b[F up", "cursor up"),
+    ("title\x1b]0;spoof\x07after", "titleafter"),   # OSC with BEL terminator
+    ("title\x1b]0;spoof\x1b\\after", "titleafter"), # OSC with ST terminator
+    ("bare\x07bell", "barebell"),                   # BEL (C0 control)
+    ("newline\nkept", "newline\nkept"),              # \n preserved
+    ("tab\tkept", "tab\tkept"),                      # \t preserved
+])
+def test_strip_ansi(th, raw, expected):
+    assert th._strip_ansi(raw) == expected
+
+
+def test_strip_ansi_has_no_escape_chars_in_output(th):
+    # Fuzz-style: whatever garbage is thrown in, the output must not contain ESC or C0 controls
+    hostile = "a\x1b[Xb\x1b]payload\x07c\x1bM\x00d\x7fe"
+    out = th._strip_ansi(hostile)
+    assert "\x1b" not in out
+    assert "\x00" not in out
+    assert "\x7f" not in out
+
+
 # --- Action dispatch -----------------------------------------------------
 
 def test_apply_action_clipboard_single(th, capsys):
