@@ -908,29 +908,30 @@ def _cmd_o(entry):
     webbrowser.open(entry['link'], new=2)
     print('Torrent page opened in default browser!')
 
-# Longer prefixes must come first so 'cs' matches before 'c', and 'rd' before 'r<n>' if one ever exists.
-# Handler names (strings) are resolved at dispatch time via globals() so that patch.object() works in tests.
+# Longer prefixes must come first so 'cs' matches before 'c', and 'rd' before any
+# future 'r<n>' command. Dispatch tests observe side effects (e.g. the printed
+# "token not configured" message from _cmd_rd) rather than patching handlers.
 _NUMERIC_CMDS = [
-    ('rd', '_cmd_rd'),
-    ('cs', '_cmd_cs'),
-    ('c', '_cmd_c'),
-    ('m', '_cmd_m'),
-    ('d', '_cmd_d'),
-    ('o', '_cmd_o'),
+    ('rd', _cmd_rd),
+    ('cs', _cmd_cs),
+    ('c', _cmd_c),
+    ('m', _cmd_m),
+    ('d', _cmd_d),
+    ('o', _cmd_o),
 ]
 
 def switch(arg):
     global exit, query
 
-    # Numeric commands: m<n>, c<n>, cs<n>, d<n>, o<n>
-    for prefix, handler_name in _NUMERIC_CMDS:
+    # Numeric commands: m<n>, c<n>, cs<n>, d<n>, o<n>, rd<n>
+    for prefix, handler in _NUMERIC_CMDS:
         match = re.match(rf'^{prefix}(\d+)$', arg)
         if match:
             entry = _get_entry(int(match.group(1)))
             if entry is None:
                 print('Invalid command!\n')
             else:
-                globals()[handler_name](entry)
+                handler(entry)
             return
 
     # Commands with no argument

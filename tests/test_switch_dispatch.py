@@ -132,14 +132,16 @@ def test_remove_and_replace_spaces(th):
     assert th.removeAndReplaceSpaces("no_space") == "no_space"
 
 
-def test_switch_rd_routes_to_cmd_rd(th):
+def test_switch_rd_routes_to_cmd_rd(th, capsys, monkeypatch):
+    # Observe side effects rather than patching the handler. With no RD_TOKEN and
+    # empty config, _cmd_rd prints the "token not configured" message — proof the
+    # dispatcher reached it.
     th.results = _fake_results(5)
     th.num_results = 5
-    with patch.object(th, "_cmd_rd") as m_rd:
+    monkeypatch.delenv("RD_TOKEN", raising=False)
+    with patch.object(th, "_load_config", return_value={}):
         th.switch("rd3")
-    m_rd.assert_called_once()
-    # Should have received entry for index 3
-    assert m_rd.call_args.args[0]["name"] == "result 3"
+    assert "token not configured" in capsys.readouterr().out
 
 
 def test_switch_rd0_rejected_as_invalid(th, capsys):
