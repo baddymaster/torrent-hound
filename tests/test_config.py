@@ -132,11 +132,11 @@ def test_save_config_preserves_existing_action(th, tmp_path):
     assert reloaded["real_debrid"]["action"] == "print"
 
 
-def test_cmd_set_rd_token_writes_token(th, tmp_path, capsys):
+def test_set_rd_token_writes_token(th, tmp_path, capsys):
     path = tmp_path / "config.toml"
     with patch.object(th, "_config_path", lambda: path), \
          patch.object(th, "_prompt_rd_token", return_value="my-token"):
-        rc = th._cmd_set_rd_token()
+        rc = th._set_rd_token()
     assert rc == 0
     out = capsys.readouterr().out
     assert "token saved" in out.lower()
@@ -146,12 +146,12 @@ def test_cmd_set_rd_token_writes_token(th, tmp_path, capsys):
     assert cfg["real_debrid"]["token"] == "my-token"
 
 
-def test_cmd_set_rd_token_preserves_existing_action(th, tmp_path):
+def test_set_rd_token_preserves_existing_action(th, tmp_path):
     path = tmp_path / "config.toml"
     path.write_text('[real_debrid]\naction = "browser"\n', encoding="utf-8")
     with patch.object(th, "_config_path", lambda: path), \
          patch.object(th, "_prompt_rd_token", return_value="tok"):
-        rc = th._cmd_set_rd_token()
+        rc = th._set_rd_token()
     assert rc == 0
     with patch.object(th, "_config_path", lambda: path):
         cfg = th._load_config()
@@ -159,30 +159,30 @@ def test_cmd_set_rd_token_preserves_existing_action(th, tmp_path):
     assert cfg["real_debrid"]["action"] == "browser"
 
 
-def test_cmd_set_rd_token_empty_aborts(th, tmp_path, capsys):
+def test_set_rd_token_empty_aborts(th, tmp_path, capsys):
     path = tmp_path / "config.toml"
     with patch.object(th, "_config_path", lambda: path), \
          patch.object(th, "_prompt_rd_token", return_value=""):
-        rc = th._cmd_set_rd_token()
+        rc = th._set_rd_token()
     assert rc == 1
     assert "aborting" in capsys.readouterr().out.lower()
     assert not path.exists()  # no file created on abort
 
 
-def test_cmd_set_rd_token_write_failure(th, tmp_path, capsys):
+def test_set_rd_token_write_failure(th, tmp_path, capsys):
     def fail_save(_):
         raise OSError("disk full")
     with patch.object(th, "_prompt_rd_token", return_value="tok"), \
          patch.object(th, "_save_config", side_effect=fail_save):
-        rc = th._cmd_set_rd_token()
+        rc = th._set_rd_token()
     assert rc == 1
     assert "failed to write" in capsys.readouterr().out.lower()
 
 
-def test_cmd_print_config_path_prints_path(th, tmp_path, capsys):
+def test_print_config_path_prints_path(th, tmp_path, capsys):
     fake = tmp_path / "config.toml"
     with patch.object(th, "_config_path", lambda: fake):
-        rc = th._cmd_print_config_path()
+        rc = th._print_config_path()
     assert rc == 0
     assert str(fake) in capsys.readouterr().out
 

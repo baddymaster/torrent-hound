@@ -136,7 +136,7 @@ def _prompt_rd_token():
     return sys.stdin.readline().strip()
 
 
-def _cmd_set_rd_token():
+def _set_rd_token():
     """Prompt for a token and save it, preserving other config keys. Returns exit code."""
     token = _prompt_rd_token()
     if not token:
@@ -153,7 +153,7 @@ def _cmd_set_rd_token():
     return 0
 
 
-def _cmd_print_config_path():
+def _print_config_path():
     print(_config_path())
     return 0
 
@@ -1107,9 +1107,9 @@ def main():
     args = parser.parse_args()
 
     if args.config_path:
-        sys.exit(_cmd_print_config_path())
+        sys.exit(_print_config_path())
     if args.set_rd_token:
-        sys.exit(_cmd_set_rd_token())
+        sys.exit(_set_rd_token())
 
     if args.query:
         query = ' '.join(args.query)
