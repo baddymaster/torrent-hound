@@ -146,7 +146,7 @@ TPB_DOMAINS = [
     'pirateproxy.live',
 ]
 
-def _parse_tpb_html(html, limit=10):
+def _parse_tpb_html(html, domain='thepiratebay.zone', limit=10):
     """Parse a TPB search-results HTML document. Returns [] if the expected
     results table isn't present (domain is dead / blocked / CAPTCHA)."""
     soup = BeautifulSoup(html, 'html.parser')
@@ -155,13 +155,16 @@ def _parse_tpb_html(html, limit=10):
         return []
     trs = table.find_all("tr")[1:]  # drop header row
     parsed = []
+    base = f'https://{domain}'
     for tr in trs[:limit]:
         tds = tr.find_all("td")
         try:
             link_name = tds[1].find("a", {"class": "detLink"})
+            href = link_name["href"]
+            link = href if href.startswith("http") else f"{base}{href}"
             res = {
                 'name': link_name.contents[0].strip(),
-                'link': link_name["href"],
+                'link': link,
                 'seeders': int(tds[2].contents[0]),
                 'leechers': int(tds[3].contents[0]),
                 'magnet': tds[1].find("img", {"alt": "Magnet link"}).parent['href'],
@@ -189,7 +192,7 @@ def searchPirateBayCondensed(search_string=defaultQuery, quiet_mode=False, limit
         url = f'https://{domain}/s/?q={removeAndReplaceSpaces(search_string)}&page=0&orderby=99'
         try:
             r = requests.get(url, headers=headers, timeout=timeout)
-            parsed = _parse_tpb_html(r.content, limit=limit)
+            parsed = _parse_tpb_html(r.content, domain=domain, limit=limit)
             if parsed:
                 tpb_working_domain = domain
                 tpb_url = url
@@ -221,11 +224,16 @@ def _build_yts_magnet(info_hash, title):
     trackers = "&".join(f"tr={t}" for t in YTS_TRACKERS)
     return f"magnet:?xt=urn:btih:{info_hash}&dn={dn}&{trackers}"
 
-def _parse_yts_json(data, limit=10):
+def _parse_yts_json(data, domain='yts.mx', limit=10):
     """Flatten YTS API response into a list of result dicts (one per quality variant)."""
     movies = data.get("data", {}).get("movies") or []
     parsed = []
     for movie in movies:
+        # Rewrite the link to use the working domain instead of whatever the API returned
+        movie_url = movie.get("url", "")
+        if movie_url:
+            # Replace any YTS domain in the URL with the one that actually responded
+            movie_url = re.sub(r'https?://[^/]+', f'https://{domain}', movie_url)
         for torrent in movie.get("torrents", []):
             name = f"{movie.get('title_long', movie.get('title', '?'))} [{torrent['quality']}]"
             seeds = torrent.get("seeds", 0)
@@ -236,7 +244,7 @@ def _parse_yts_json(data, limit=10):
                 ratio = 'inf'
             parsed.append({
                 "name": name,
-                "link": movie.get("url", ""),
+                "link": movie_url,
                 "seeders": seeds,
                 "leechers": peers,
                 "size": torrent.get("size", "?"),
