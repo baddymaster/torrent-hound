@@ -7,6 +7,14 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-04-16
+
+- Adding tests for EZTV slugs, u command URLs, TPB link domains, and Unicode stripping
+- Showing all source URLs in the u command
+- Fixing EZTV links to include slug for valid torrent page URLs
+- Fixing table alignment by stripping wide Unicode chars from torrent names
+- Fixing table layout to keep numeric columns visible at narrow terminal widths
+
 ### Changed
 - `u` command now shows URLs for all active sources (TPB, YTS, EZTV), not just TPB
 
