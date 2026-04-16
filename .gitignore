@@ -1,4 +1,5 @@
 tasks/
+release.sh
 .venv/
 __pycache__/
 *.pyc
