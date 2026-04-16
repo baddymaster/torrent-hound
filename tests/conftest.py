@@ -1,10 +1,6 @@
-"""Pytest bootstrap: load torrent-hound.py as a module under the name `th`.
-
-The source file uses a hyphen in its name (`torrent-hound.py`), which isn't
-importable via a normal `import` statement. We load it manually with
-importlib and expose it as the fixture `th` so tests can do `th.function(...)`.
-"""
+"""Pytest bootstrap: load torrent_hound.py as a module under the name `th`."""
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -30,3 +26,9 @@ def th():
 def tpb_ubuntu_html():
     """Real captured TPB search response for 'ubuntu'."""
     return (FIXTURES / "tpb_search_ubuntu.html").read_bytes()
+
+
+@pytest.fixture
+def yts_interstellar_json():
+    """Real captured YTS API response for 'interstellar'."""
+    return json.loads((FIXTURES / "yts_search_interstellar.json").read_text())

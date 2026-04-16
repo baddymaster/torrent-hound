@@ -22,6 +22,7 @@ import argparse
 import json
 import re
 import sys
+import urllib.parse
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
 
@@ -56,6 +57,7 @@ class colored:
 defaultQuery, query = 'ubuntu', ''
 results_tpb_condensed = None
 results_1337x = None
+results_yts = None
 results, results_rarbg, exit = None, None, None
 num_results = 0
 tpb_working_domain = 'thepiratebay.zone'
@@ -201,6 +203,67 @@ def searchPirateBayCondensed(search_string=defaultQuery, quiet_mode=False, limit
     results_tpb_condensed = []
     return results_tpb_condensed
 
+# ---------------------------------------------------------------------------
+# YTS (movies only, JSON API, no scraping)
+# ---------------------------------------------------------------------------
+YTS_DOMAINS = ['yts.lt', 'yts.am', 'yts.mx', 'yts.rs']
+
+YTS_TRACKERS = [
+    "udp://open.demonii.com:1337/announce",
+    "udp://tracker.opentrackr.org:1337/announce",
+    "udp://tracker.torrent.eu.org:451/announce",
+    "udp://tracker.dler.org:6969/announce",
+    "udp://open.stealth.si:80/announce",
+]
+
+def _build_yts_magnet(info_hash, title):
+    dn = urllib.parse.quote_plus(title)
+    trackers = "&".join(f"tr={t}" for t in YTS_TRACKERS)
+    return f"magnet:?xt=urn:btih:{info_hash}&dn={dn}&{trackers}"
+
+def _parse_yts_json(data, limit=10):
+    """Flatten YTS API response into a list of result dicts (one per quality variant)."""
+    movies = data.get("data", {}).get("movies") or []
+    parsed = []
+    for movie in movies:
+        for torrent in movie.get("torrents", []):
+            name = f"{movie.get('title_long', movie.get('title', '?'))} [{torrent['quality']}]"
+            seeds = torrent.get("seeds", 0)
+            peers = torrent.get("peers", 0)
+            try:
+                ratio = format(float(seeds) / float(peers), '.1f')
+            except ZeroDivisionError:
+                ratio = 'inf'
+            parsed.append({
+                "name": name,
+                "link": movie.get("url", ""),
+                "seeders": seeds,
+                "leechers": peers,
+                "size": torrent.get("size", "?"),
+                "ratio": ratio,
+                "magnet": _build_yts_magnet(torrent["hash"], name),
+            })
+            if len(parsed) >= limit:
+                return parsed
+    return parsed
+
+def searchYTS(search_string='', quiet_mode=False, limit=10, timeout=8):
+    """Search YTS, trying known mirrors in order."""
+    for domain in YTS_DOMAINS:
+        url = f"https://{domain}/api/v2/list_movies.json?query_term={urllib.parse.quote_plus(search_string)}&limit=20&sort_by=seeds"
+        try:
+            r = requests.get(url, timeout=timeout)
+            data = r.json()
+            if data.get("status") == "ok":
+                parsed = _parse_yts_json(data, limit=limit)
+                if parsed:
+                    return parsed
+        except (requests.RequestException, ValueError):
+            continue
+    if not quiet_mode:
+        print(colored.magenta("[YTS] Error : All known mirrors returned no results or were unreachable"))
+    return []
+
 def _build_results_table(entries, source_name, start_index=1, limit=10):
     """Build a rich Table from a list of result dicts. Returns (table, count_added)."""
     table = Table(
@@ -333,14 +396,16 @@ def print_menu(arg=0):
 # To re-enable 1337x: uncomment its entry (and see search1337x for CF caveats).
 _SOURCES = [
     ('TPB', lambda q, qm: searchPirateBayCondensed(search_string=q, quiet_mode=qm)),
+    ('YTS', lambda q, qm: searchYTS(search_string=q, quiet_mode=qm)),
     # ('1337x', lambda q, qm: search1337x(q, quiet_mode=qm)),
 ]
 
 def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
-    global results, results_rarbg, results_tpb_condensed, results_1337x
+    global results, results_rarbg, results_tpb_condensed, results_1337x, results_yts
 
     if force_search:
         results_1337x = None
+        results_yts = None
         results = None
         results_tpb_condensed = None
 
@@ -351,8 +416,7 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
         names = ", ".join(name for name, _ in _SOURCES)
         print(colored.magenta(f"Searching {names}..."), end='')
 
-    # Fan out all source searches in parallel. With one source this is a no-op;
-    # with N sources, total latency drops to max() instead of sum().
+    # Fan out all source searches in parallel.
     with ThreadPoolExecutor(max_workers=max(1, len(_SOURCES))) as pool:
         futures = {name: pool.submit(fn, query, quiet_mode) for name, fn in _SOURCES}
         source_results = {name: (fut.result() or []) for name, fut in futures.items()}
@@ -361,12 +425,18 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
         print(colored.green("Done."))
 
     results_tpb_condensed = source_results.get('TPB', [])
-    results = results_tpb_condensed
+    results_yts = source_results.get('YTS', [])
     results_1337x = source_results.get('1337x', [])
+    # Flat list for switch() — result numbers span all sources sequentially
+    results = results_tpb_condensed + results_yts + results_1337x
 
 def prettyPrintCombinedTopResults():
     global num_results
     num_results = pretty_print_top_results_piratebay(10)
+    if results_yts:
+        table, count = _build_results_table(results_yts, "YTS", start_index=num_results + 1, limit=10)
+        console.print(table)
+        num_results += count
 
 def printTopResults():
     prettyPrintCombinedTopResults()
@@ -392,11 +462,12 @@ def convertListJSONToPureJSON(result_list):
     return result_json
 
 def printResultsQuietly(as_json=False):
-    global results_rarbg, results_tpb_condensed, results_1337x
+    global results_rarbg, results_tpb_condensed, results_1337x, results_yts
 
     combined_json_results = {
         'rarbg': convertListJSONToPureJSON(results_rarbg),
         'tpb': convertListJSONToPureJSON(results_tpb_condensed),
+        'yts': convertListJSONToPureJSON(results_yts),
         '1337x': convertListJSONToPureJSON(results_1337x),
     }
 

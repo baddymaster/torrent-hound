@@ -1,0 +1,167 @@
+{
+  "status": "ok",
+  "status_message": "Query was successful. NOTICE: Base URL moving to https://movies-api.accel.li/api/v2/",
+  "data": {
+    "movie_count": 2,
+    "limit": 5,
+    "page_number": 1,
+    "movies": [
+      {
+        "id": 62044,
+        "url": "https://yts.bz/movies/the-science-of-interstellar-2014",
+        "imdb_code": "tt4415360",
+        "title": "The Science of Interstellar",
+        "title_english": "The Science of Interstellar",
+        "title_long": "The Science of Interstellar (2014)",
+        "slug": "the-science-of-interstellar-2014",
+        "year": 2014,
+        "rating": 7.1,
+        "runtime": 51,
+        "genres": [
+          "Documentary"
+        ],
+        "summary": "The Science of Christopher Nolan's Sci-Fi, Interstellar.",
+        "description_full": "The Science of Christopher Nolan's Sci-Fi, Interstellar.",
+        "synopsis": "The Science of Christopher Nolan's Sci-Fi, Interstellar.",
+        "yt_trailer_code": "7yxaUi8LIzE",
+        "language": "en",
+        "mpa_rating": "",
+        "background_image": "https://yts.bz/assets/images/movies/the_science_of_interstellar_2015/background.jpg",
+        "background_image_original": "https://yts.bz/assets/images/movies/the_science_of_interstellar_2015/background.jpg",
+        "small_cover_image": "https://yts.bz/assets/images/movies/the_science_of_interstellar_2015/small-cover.jpg",
+        "medium_cover_image": "https://yts.bz/assets/images/movies/the_science_of_interstellar_2015/medium-cover.jpg",
+        "large_cover_image": "https://yts.bz/assets/images/movies/the_science_of_interstellar_2015/large-cover.jpg",
+        "state": "ok",
+        "torrents": [
+          {
+            "url": "https://yts.bz/torrent/download/9B9021809A8F04946C0FF3D9FD056C4ED8D94E99",
+            "hash": "9B9021809A8F04946C0FF3D9FD056C4ED8D94E99",
+            "quality": "720p",
+            "type": "bluray",
+            "is_repack": "0",
+            "video_codec": "x264",
+            "bit_depth": "8",
+            "audio_channels": "2.0",
+            "seeds": 12,
+            "peers": 0,
+            "size": "463.81 MB",
+            "size_bytes": 486340035,
+            "date_uploaded": "2024-06-04 13:59:23",
+            "date_uploaded_unix": 1717502363
+          },
+          {
+            "url": "https://yts.bz/torrent/download/3E1011A393C92933980B96C5974A787C2FF5AAB0",
+            "hash": "3E1011A393C92933980B96C5974A787C2FF5AAB0",
+            "quality": "1080p",
+            "type": "bluray",
+            "is_repack": "0",
+            "video_codec": "x264",
+            "bit_depth": "8",
+            "audio_channels": "2.0",
+            "seeds": 21,
+            "peers": 1,
+            "size": "859.99 MB",
+            "size_bytes": 901764874,
+            "date_uploaded": "2024-06-04 14:34:38",
+            "date_uploaded_unix": 1717504478
+          }
+        ],
+        "date_uploaded": "2024-06-04 13:59:23",
+        "date_uploaded_unix": 1717502363
+      },
+      {
+        "id": 1632,
+        "url": "https://yts.bz/movies/interstellar-2014",
+        "imdb_code": "tt0816692",
+        "title": "Interstellar",
+        "title_english": "Interstellar",
+        "title_long": "Interstellar (2014)",
+        "slug": "interstellar-2014",
+        "year": 2014,
+        "rating": 8.7,
+        "runtime": 169,
+        "genres": [
+          "Action",
+          "Adventure",
+          "Drama",
+          "Sci-Fi",
+          "Thriller"
+        ],
+        "summary": "When Earth becomes uninhabitable in the future, a farmer and ex-NASA pilot, Joseph Cooper, is tasked to pilot a spacecraft, along with a team of researchers, to find a new planet for humans.",
+        "description_full": "When Earth becomes uninhabitable in the future, a farmer and ex-NASA pilot, Joseph Cooper, is tasked to pilot a spacecraft, along with a team of researchers, to find a new planet for humans.",
+        "synopsis": "When Earth becomes uninhabitable in the future, a farmer and ex-NASA pilot, Joseph Cooper, is tasked to pilot a spacecraft, along with a team of researchers, to find a new planet for humans.",
+        "yt_trailer_code": "LY19rHKAaAg",
+        "language": "en",
+        "mpa_rating": "PG-13",
+        "background_image": "https://yts.bz/assets/images/movies/interstellar_2014/background.jpg",
+        "background_image_original": "https://yts.bz/assets/images/movies/interstellar_2014/background.jpg",
+        "small_cover_image": "https://yts.bz/assets/images/movies/interstellar_2014/small-cover.jpg",
+        "medium_cover_image": "https://yts.bz/assets/images/movies/interstellar_2014/medium-cover.jpg",
+        "large_cover_image": "https://yts.bz/assets/images/movies/interstellar_2014/large-cover.jpg",
+        "state": "ok",
+        "torrents": [
+          {
+            "url": "https://yts.bz/torrent/download/6E88B3F25BA49D483D740A652BF013C341BC5373",
+            "hash": "6E88B3F25BA49D483D740A652BF013C341BC5373",
+            "quality": "720p",
+            "type": "bluray",
+            "is_repack": "0",
+            "video_codec": "x264",
+            "bit_depth": "8",
+            "audio_channels": "2.0",
+            "seeds": 0,
+            "peers": 0,
+            "size": "1.02 GB",
+            "size_bytes": 1095216660,
+            "date_uploaded": "2015-11-01 00:18:06",
+            "date_uploaded_unix": 1446333486
+          },
+          {
+            "url": "https://yts.bz/torrent/download/89599BF4DC369A3A8ECA26411C5CCF922D78B486",
+            "hash": "89599BF4DC369A3A8ECA26411C5CCF922D78B486",
+            "quality": "1080p",
+            "type": "bluray",
+            "is_repack": "0",
+            "video_codec": "x264",
+            "bit_depth": "8",
+            "audio_channels": "2.0",
+            "seeds": 100,
+            "peers": 100,
+            "size": "2.26 GB",
+            "size_bytes": 2426656522,
+            "date_uploaded": "2015-11-01 00:18:07",
+            "date_uploaded_unix": 1446333487
+          },
+          {
+            "url": "https://yts.bz/torrent/download/FA9773B96054338D1F1C10F2A4D2D9BD5A578B92",
+            "hash": "FA9773B96054338D1F1C10F2A4D2D9BD5A578B92",
+            "quality": "2160p",
+            "type": "bluray",
+            "is_repack": "",
+            "video_codec": "x265",
+            "bit_depth": "10",
+            "audio_channels": "5.1",
+            "seeds": 100,
+            "peers": 36,
+            "size": "8.36 GB",
+            "size_bytes": 8976481649,
+            "date_uploaded": "2021-05-26 12:30:10",
+            "date_uploaded_unix": 1622025010
+          }
+        ],
+        "date_uploaded": "2015-11-01 00:18:06",
+        "date_uploaded_unix": 1446333486
+      }
+    ]
+  },
+  "@meta": {
+    "migration": {
+      "message": "API base is moving; update your client.",
+      "old_base": "https://yts.bz/api/v2/",
+      "new_base": "https://movies-api.accel.li/api/v2/",
+      "sunset": "2026-04-10T00:00:00Z"
+    },
+    "api_version": 2,
+    "execution_time": "0 ms"
+  }
+}
