@@ -337,6 +337,11 @@ def _imdb_lookup(query, timeout=8):
         pass
     return None
 
+def _eztv_slug(title):
+    """Derive a URL slug from an EZTV torrent title."""
+    clean = re.sub(r'\s*EZTV$', '', title, flags=re.IGNORECASE)
+    return re.sub(r'[^a-z0-9]+', '-', clean.lower()).strip('-')
+
 def _parse_eztv_json(torrents, domain='eztvx.to', season=None, episode=None, filters=None, limit=10):
     """Filter and convert raw EZTV torrent dicts into our standard result format."""
     parsed = []
@@ -361,7 +366,7 @@ def _parse_eztv_json(torrents, domain='eztvx.to', season=None, episode=None, fil
         size_bytes = t.get('size_bytes', 0)
         parsed.append({
             'name': title,
-            'link': f"https://{domain}/ep/{t.get('id', '')}",
+            'link': f"https://{domain}/ep/{t.get('id', '')}/{_eztv_slug(title)}/",
             'seeders': seeds,
             'leechers': peers,
             'size': _format_bytes(size_bytes),
