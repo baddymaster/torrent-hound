@@ -144,6 +144,28 @@ def test_parse_eztv_json_link_uses_provided_domain(th, eztv_severance_json):
         assert "eztv.re" in r["link"]
 
 
+def test_parse_eztv_json_link_includes_slug(th, eztv_severance_json):
+    """Links must include a slug after the ID — bare /ep/{id} returns a broken page."""
+    torrents = eztv_severance_json.get("torrents", [])
+    results = th._parse_eztv_json(torrents, limit=3)
+    for r in results:
+        # Link should be /ep/{id}/{slug}/ — slug has at least one hyphenated word
+        parts = r["link"].rstrip("/").split("/")
+        assert len(parts) >= 6, f"link too short (missing slug?): {r['link']}"
+        slug = parts[-1]
+        assert slug and slug != str(parts[-2]), f"slug missing or same as id: {r['link']}"
+
+
+def test_eztv_slug_strips_eztv_suffix(th):
+    assert th._eztv_slug("Game of Thrones S01E01 720p EZTV") == "game-of-thrones-s01e01-720p"
+    assert th._eztv_slug("Severance S02E05 1080p WEB-DL EZTV") == "severance-s02e05-1080p-web-dl"
+
+
+def test_eztv_slug_handles_special_chars(th):
+    assert th._eztv_slug("Show.Name.S01E01.x264-GROUP EZTV") == "show-name-s01e01-x264-group"
+    assert th._eztv_slug("  spaces  ") == "spaces"
+
+
 def test_parse_eztv_json_empty_on_no_torrents(th):
     assert th._parse_eztv_json([]) == []
     assert th._parse_eztv_json(None or []) == []

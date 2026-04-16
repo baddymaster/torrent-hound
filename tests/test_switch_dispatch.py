@@ -99,6 +99,33 @@ def test_switch_q_sets_exit(th):
     assert th.exit is True
 
 
+def test_switch_u_shows_all_source_urls(th, capsys):
+    """The u command should show URLs for every source that returned results."""
+    th.tpb_url = "https://thepiratebay.zone/s/?q=test"
+    th.yts_url = "https://yts.lt/api/v2/list_movies.json?query_term=test"
+    th.eztv_url = "https://eztvx.to/api/get-torrents?imdb_id=12345"
+    th.switch("u")
+    out = capsys.readouterr().out
+    assert "PirateBay" in out
+    assert "YTS" in out
+    assert "EZTV" in out
+    assert "thepiratebay.zone" in out
+    assert "yts.lt" in out
+    assert "eztvx.to" in out
+
+
+def test_switch_u_skips_empty_urls(th, capsys):
+    """Sources that didn't run shouldn't appear in u output."""
+    th.tpb_url = "https://thepiratebay.zone/s/?q=test"
+    th.yts_url = ""
+    th.eztv_url = ""
+    th.switch("u")
+    out = capsys.readouterr().out
+    assert "PirateBay" in out
+    assert "YTS" not in out
+    assert "EZTV" not in out
+
+
 def test_remove_and_replace_spaces(th):
     assert th.removeAndReplaceSpaces("hello world") == "hello+world"
     assert th.removeAndReplaceSpaces(" leading space") == "leading+space"

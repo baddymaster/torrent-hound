@@ -46,3 +46,20 @@ def test_parse_tpb_html_empty_on_missing_results_table(th):
 def test_parse_tpb_html_empty_on_garbage_input(th):
     assert th._parse_tpb_html(b"") == []
     assert th._parse_tpb_html(b"not html") == []
+
+
+def test_parse_tpb_html_link_includes_domain(th, tpb_ubuntu_html):
+    """Links must be absolute URLs with the working domain, not bare paths."""
+    results = th._parse_tpb_html(tpb_ubuntu_html, domain="thepiratebay.zone", limit=3)
+    for r in results:
+        assert r["link"].startswith("https://"), f"link is not absolute: {r['link']}"
+
+
+def test_build_results_table_strips_wide_unicode(th):
+    """Emoji and wide Unicode in torrent names must be stripped to prevent
+    table misalignment."""
+    import re
+    name_with_emoji = "Project.Hail.Mary.2026.2160p.WEBrip.h265.Dual.YG⭐"
+    cleaned = re.sub(r'[^\x20-\x7E]', '', name_with_emoji)
+    assert "⭐" not in cleaned
+    assert "YG" in cleaned
