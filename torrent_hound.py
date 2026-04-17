@@ -1239,8 +1239,8 @@ def print_menu(arg=0):
         5. cs<result number> - Copy magnet link and open seedr.cc
         6. rd<result number> - Debrid and download via Real-Debrid (requires token)
         7. p - Re-print top 10 results for the last search
-        8. s - Enter a new query to search for over all available torrent websites
-        9. r - Repeat last search (with same query)
+        8. s - Enter a new query (uses cache for repeat queries within 5 min)
+        9. r - Repeat last search, forcing a fresh fetch (bypasses the cache)
         ------------------------''')
     elif arg == 1:
         print('''
