@@ -767,6 +767,15 @@ def _rd_request(method, path, token, data=None):
         raise _RdError("Real-Debrid refused the request (403). Likely account/quota issue.")
     if s == 429:
         raise _RdError("Real-Debrid rate limit hit. Wait a minute and retry.")
+    if s == 404:
+        raise _RdError(
+            "Real-Debrid doesn't have that resource (404). The torrent id may have "
+            "expired — run the rd command again to get a fresh one."
+        )
+    if s == 400:
+        # 400 usually means a malformed parameter we sent; include body context if RD gave us one
+        ctx = f": {err_msg}" if err_msg else ""
+        raise _RdError(f"Real-Debrid rejected the request as malformed (400){ctx}.")
 
     # Generic — surface body context if RD gave us anything to work with
     if err_code is not None or err_msg:

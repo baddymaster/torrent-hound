@@ -203,15 +203,45 @@ def test_rd_request_known_error_code_uses_specific_message(th, err_code, expecte
 
 
 def test_rd_request_unknown_error_code_falls_through_with_body_context(th):
-    # 99 isn't in our mapping, 400 has no specific status fallback yet
-    resp = _mk_response(400, json_body={"error": "bad thing", "error_code": 99})
+    # 99 isn't in our mapping, and 502 has no specific status fallback — falls to generic
+    resp = _mk_response(502, json_body={"error": "bad thing", "error_code": 99})
     with patch.object(th.requests, "request", return_value=resp):
         with pytest.raises(th._RdError) as exc:
             th._rd_request("GET", "/x", token="t")
     msg = str(exc.value)
-    assert "400" in msg
+    assert "502" in msg
     assert "error_code=99" in msg
     assert "bad thing" in msg
+
+
+def test_rd_request_400_specific_message_with_body_context(th):
+    resp = _mk_response(400, json_body={"error": "Required parameter missing", "error_code": 1})
+    with patch.object(th.requests, "request", return_value=resp):
+        with pytest.raises(th._RdError) as exc:
+            th._rd_request("POST", "/torrents/addMagnet", token="t")
+    msg = str(exc.value)
+    assert "400" in msg
+    assert "malformed" in msg
+    assert "Required parameter missing" in msg
+
+
+def test_rd_request_400_no_body(th):
+    resp = _mk_response(400)  # empty body
+    with patch.object(th.requests, "request", return_value=resp):
+        with pytest.raises(th._RdError) as exc:
+            th._rd_request("POST", "/x", token="t")
+    assert "malformed" in str(exc.value)
+
+
+def test_rd_request_404_specific_message(th):
+    resp = _mk_response(404, json_body={"error": "Resource not found", "error_code": 7})
+    with patch.object(th.requests, "request", return_value=resp):
+        with pytest.raises(th._RdError) as exc:
+            th._rd_request("GET", "/torrents/info/stale-id", token="t")
+    msg = str(exc.value)
+    assert "404" in msg
+    assert "torrent id" in msg.lower()
+    assert "expired" in msg.lower()
 
 
 def test_rd_request_error_code_preempts_status_fallback(th):
