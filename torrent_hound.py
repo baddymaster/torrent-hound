@@ -730,7 +730,17 @@ _RD_API = "https://api.real-debrid.com/rest/1.0"
 
 
 class _RdError(Exception):
-    """Carries a pre-formatted user-facing message; caller just prints it."""
+    """Carries a pre-formatted user-facing message; caller just prints it.
+
+    The optional `error_code` attribute mirrors RD's documented numeric error_code
+    from the response body when one was available. Callers can use it to suppress
+    or branch on specific failure modes (e.g., `_rd_check_cached` swallows
+    error_code 37 'endpoint disabled' to degrade gracefully when RD turns off the
+    undocumented instantAvailability endpoint for an account).
+    """
+    def __init__(self, message, error_code=None):
+        super().__init__(message)
+        self.error_code = error_code
 
 
 def _rd_has_cdn_markers(headers):
@@ -835,7 +845,7 @@ def _rd_request(method, path, token, data=None):
     # Prefer specific message keyed off RD's documented error_code in the body
     err_code, err_msg = _rd_parse_error_body(resp)
     if err_code in _RD_ERROR_MESSAGES:
-        raise _RdError(_RD_ERROR_MESSAGES[err_code])
+        raise _RdError(_RD_ERROR_MESSAGES[err_code], error_code=err_code)
 
     # Status-code fallbacks for cases where body is missing or has an unmapped code
     if s == 401:
@@ -861,19 +871,31 @@ def _rd_request(method, path, token, data=None):
 
     # Generic — surface body context if RD gave us anything to work with
     if err_code is not None or err_msg:
-        raise _RdError(f"Real-Debrid error {s} (error_code={err_code}): {err_msg or 'no message'}.")
+        raise _RdError(
+            f"Real-Debrid error {s} (error_code={err_code}): {err_msg or 'no message'}.",
+            error_code=err_code,
+        )
     raise _RdError(f"Real-Debrid error {s}. Try again.")
 
 
 # NOTE: /torrents/instantAvailability/{hash} is NOT in the official RD REST API v1
 # docs at https://api.real-debrid.com/. It's a community-known endpoint used by
 # every major third-party RD client (Prowlarr, rdtclient, py-real-debrid, Stremio
-# addons, etc.). The {HASH: {"rd": [...]}} response shape is also folklore. If RD
-# ever removes the endpoint, _rd_check_cached will start returning False for every
-# hash and the rd<n> flow will fall through to the "submit anyway?" prompt — still
-# functional, just degraded UX.
+# addons, etc.). The {HASH: {"rd": [...]}} response shape is also folklore.
+#
+# RD has been progressively disabling this endpoint per-account since ~2024
+# (returns error_code 37 'Endpoint disabled'). When that happens — or if RD
+# removes the endpoint outright (error_code 3 'API method not recognized') — we
+# swallow the error and return False so the rd<n> flow degrades gracefully into
+# the "submit anyway?" prompt instead of bricking the command. Other RD errors
+# (auth, network, account locks) propagate as normal.
 def _rd_check_cached(info_hash, token):
-    data = _rd_request("GET", f"/torrents/instantAvailability/{info_hash}", token=token) or {}
+    try:
+        data = _rd_request("GET", f"/torrents/instantAvailability/{info_hash}", token=token) or {}
+    except _RdError as e:
+        if e.error_code in (3, 37):
+            return False
+        raise
     entry = data.get(info_hash) or data.get(info_hash.upper()) or {}
     variants = entry.get("rd") if isinstance(entry, dict) else entry
     return bool(variants)

@@ -355,6 +355,52 @@ def test_rd_check_cached_false_empty_rd(th):
             assert th._rd_check_cached("01" * 20, token="t") is False
 
 
+@pytest.mark.parametrize("suppressed_code", [37, 3])
+def test_rd_check_cached_endpoint_disabled_returns_false(th, suppressed_code):
+    # RD has been progressively disabling instantAvailability per-account; when
+    # that hits, error_code 37 ('endpoint disabled') or 3 ('method not recognized')
+    # should be swallowed so the rd<n> flow degrades to "submit anyway?" instead
+    # of bricking the whole command.
+    err = th._RdError("This Real-Debrid endpoint is disabled for your account.", error_code=suppressed_code)
+    with patch.object(th, "_rd_request", side_effect=err):
+        assert th._rd_check_cached("01" * 20, token="t") is False
+
+
+def test_rd_check_cached_other_rd_errors_propagate(th):
+    # Account locked (14) is a real account-level problem the user must see —
+    # we must NOT swallow it.
+    err = th._RdError("Your Real-Debrid account is locked.", error_code=14)
+    with patch.object(th, "_rd_request", side_effect=err):
+        with pytest.raises(th._RdError):
+            th._rd_check_cached("01" * 20, token="t")
+
+
+def test_rd_check_cached_unknown_error_code_propagates(th):
+    # Network failure / no body / bare _RdError without error_code — must surface
+    err = th._RdError("Couldn't reach real-debrid.com.")
+    with patch.object(th, "_rd_request", side_effect=err):
+        with pytest.raises(th._RdError):
+            th._rd_check_cached("01" * 20, token="t")
+
+
+def test_rd_error_carries_error_code_attribute(th):
+    # Verify the _RdError exception type carries error_code through correctly.
+    e1 = th._RdError("msg only")
+    assert e1.error_code is None
+    e2 = th._RdError("msg with code", error_code=22)
+    assert e2.error_code == 22
+    assert str(e2) == "msg with code"
+
+
+def test_rd_request_attaches_error_code_to_exception(th):
+    # When the body has a known error_code, the raised _RdError must carry it.
+    resp = _mk_response(403, json_body={"error_code": 22})
+    with patch.object(th.requests, "request", return_value=resp):
+        with pytest.raises(th._RdError) as exc:
+            th._rd_request("GET", "/x", token="t")
+    assert exc.value.error_code == 22
+
+
 def test_rd_add_magnet_returns_id(th):
     with patch.object(th, "_rd_request", return_value={"id": "abc", "uri": "..."}) as m:
         result = th._rd_add_magnet("magnet:?xt=...", token="t")
