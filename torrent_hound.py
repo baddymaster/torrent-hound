@@ -695,7 +695,10 @@ def _rd_request(method, path, token, data=None):
         ) from None
 
     s = resp.status_code
-    if s == 204:
+    if s in (202, 204):
+        # 204: success, no body (selectFiles first call, delete, settings update).
+        # 202: 'Action already done' per RD docs — selectFiles called twice on same
+        # torrent. Body is empty; treat as idempotent success.
         return None
     if 200 <= s < 300:
         # RD returns 200 for GETs and 201 for addMagnet/unrestrict. Both carry JSON.

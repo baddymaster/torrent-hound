@@ -208,6 +208,16 @@ def test_rd_request_204_no_content(th):
         assert th._rd_request("POST", "/x", token="t") is None
 
 
+def test_rd_request_202_action_already_done(th):
+    # selectFiles called a second time returns 202 with no body — idempotent success per RD docs.
+    # Without explicit handling this would fall into the 2xx range, attempt resp.json(),
+    # raise ValueError, and surface as a misleading "non-JSON / captive portal" error.
+    resp = _mk_response(202)
+    resp.json.side_effect = ValueError("No JSON")
+    with patch.object(th.requests, "request", return_value=resp):
+        assert th._rd_request("POST", "/torrents/selectFiles/x", token="t") is None
+
+
 def test_rd_request_200_non_json_raises_rd_error(th):
     # Captive portal / transparent proxy returning HTML with HTTP 200
     resp = _mk_response(200)
