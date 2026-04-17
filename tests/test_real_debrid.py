@@ -159,11 +159,36 @@ def test_rd_request_403_no_cdn_markers(th):
     assert "quota" in str(exc.value)
 
 
-def test_rd_request_429(th):
-    with patch.object(th.requests, "request", return_value=_mk_response(429)):
+def test_rd_request_429_persistent_raises_after_one_retry(th):
+    # Both attempts return 429 → one sleep, then raise
+    with patch.object(th.requests, "request", return_value=_mk_response(429)), \
+         patch.object(th.time, "sleep") as m_sleep:
         with pytest.raises(th._RdError) as exc:
             th._rd_request("GET", "/x", token="t")
     assert "rate limit" in str(exc.value)
+    m_sleep.assert_called_once_with(60)
+
+
+def test_rd_request_429_then_success_returns_json(th):
+    # First attempt rate-limited, second attempt succeeds — return the JSON
+    rate_limited = _mk_response(429)
+    success = _mk_response(200, json_body={"id": "x"})
+    with patch.object(th.requests, "request", side_effect=[rate_limited, success]) as m_req, \
+         patch.object(th.time, "sleep") as m_sleep:
+        body = th._rd_request("GET", "/x", token="t")
+    assert body == {"id": "x"}
+    assert m_req.call_count == 2
+    m_sleep.assert_called_once_with(60)
+
+
+def test_rd_request_non_429_does_not_retry(th):
+    # 503 should NOT trigger retry (only 429 does)
+    with patch.object(th.requests, "request", return_value=_mk_response(503)) as m_req, \
+         patch.object(th.time, "sleep") as m_sleep:
+        with pytest.raises(th._RdError):
+            th._rd_request("GET", "/x", token="t")
+    assert m_req.call_count == 1
+    m_sleep.assert_not_called()
 
 
 def test_rd_request_451(th):

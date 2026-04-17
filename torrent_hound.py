@@ -772,26 +772,40 @@ def _rd_parse_error_body(resp):
 
 
 def _rd_request(method, path, token, data=None):
-    """Call RD. Returns parsed JSON dict, or None for 204. Raises _RdError."""
+    """Call RD. Returns parsed JSON dict, or None for 202/204. Raises _RdError.
+
+    On HTTP 429 (rate limit) the call waits 60 seconds and retries ONCE before
+    surfacing the error. RD docs warn that "all refused requests will return
+    HTTP 429 error and will count in the limit (bruteforcing will leave you
+    blocked for undefined amount of time)" — so no exponential backoff, no
+    multi-retry. One free retry, then bail.
+    """
     url = _RD_API + path
     headers = {"Authorization": f"Bearer {token}"}
-    try:
-        resp = requests.request(method, url, headers=headers, data=data, timeout=3)
-    except requests.Timeout:
-        raise _RdError("Real-Debrid timed out. Try again in a moment.") from None
-    except requests.ConnectionError as e:
-        cause = e.__cause__
-        while cause is not None:
-            if isinstance(cause, socket.gaierror):
-                raise _RdError(
-                    "DNS lookup for api.real-debrid.com failed. Your ISP/DNS "
-                    "may be blocking it — try a VPN or DoH (1.1.1.1, 8.8.8.8)."
-                ) from None
-            cause = getattr(cause, "__cause__", None)
-        raise _RdError(
-            "Couldn't reach real-debrid.com. Check your connection or try "
-            "a VPN if your ISP blocks it."
-        ) from None
+
+    for attempt in (1, 2):
+        try:
+            resp = requests.request(method, url, headers=headers, data=data, timeout=3)
+        except requests.Timeout:
+            raise _RdError("Real-Debrid timed out. Try again in a moment.") from None
+        except requests.ConnectionError as e:
+            cause = e.__cause__
+            while cause is not None:
+                if isinstance(cause, socket.gaierror):
+                    raise _RdError(
+                        "DNS lookup for api.real-debrid.com failed. Your ISP/DNS "
+                        "may be blocking it — try a VPN or DoH (1.1.1.1, 8.8.8.8)."
+                    ) from None
+                cause = getattr(cause, "__cause__", None)
+            raise _RdError(
+                "Couldn't reach real-debrid.com. Check your connection or try "
+                "a VPN if your ISP blocks it."
+            ) from None
+
+        if resp.status_code != 429 or attempt == 2:
+            break
+        print("Real-Debrid rate limit hit; waiting 60s and retrying once...")
+        time.sleep(60)
 
     s = resp.status_code
     if s in (202, 204):
