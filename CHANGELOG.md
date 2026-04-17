@@ -7,6 +7,10 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.6.2] - 2026-04-18
+
+- Reordering imports so ruff isort check passes
+
 ## [2.6.1] - 2026-04-18
 
 ### Changed
