@@ -1222,7 +1222,7 @@ def switch(arg):
         searchAllSites(query)
         printTopResults()
     elif arg == 'r':
-        searchAllSites(query, force_search=True)
+        searchAllSites(query)
         printTopResults()
     else:
         print('Invalid command!\n')
@@ -1239,8 +1239,8 @@ def print_menu(arg=0):
         5. cs<result number> - Copy magnet link and open seedr.cc
         6. rd<result number> - Debrid and download via Real-Debrid (requires token)
         7. p - Re-print top 10 results for the last search
-        8. s - Enter a new query (uses cache for repeat queries within 5 min)
-        9. r - Repeat last search, forcing a fresh fetch (bypasses the cache)
+        8. s - Enter a new query (5-min cache reused when available)
+        9. r - Repeat last search (cached sources reused; failed sources retry)
         ------------------------''')
     elif arg == 1:
         print('''
@@ -1294,7 +1294,7 @@ def _print_cache_feedback(cache_hits: dict, miss_names: list, quiet_mode: bool) 
     max_age = _format_age(max(cache_hits.values()))
     if not miss_names:
         # All sources cached.
-        print(colored.magenta(f"Using cached results ({max_age} old). 'r' to refresh."))
+        print(colored.magenta(f"Using cached results ({max_age} old)."))
     else:
         # Mixed: some hits, some misses. Fetch phase will follow with 'Done.'.
         hit_list = ", ".join(cache_hits.keys())
