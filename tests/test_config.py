@@ -240,6 +240,69 @@ def test_user_status_rd_error_returns_nonzero(th, capsys, monkeypatch):
     assert "bad token msg" in capsys.readouterr().out
 
 
+def test_revoke_rd_token_no_token(th, capsys, monkeypatch):
+    monkeypatch.delenv("RD_TOKEN", raising=False)
+    with patch.object(th, "_load_config", return_value={}):
+        rc = th._revoke_rd_token()
+    assert rc == 1
+    assert "No RD token configured" in capsys.readouterr().out
+
+
+def test_revoke_rd_token_env_var_no_config_touch(th, tmp_path, capsys, monkeypatch):
+    # Token came from env var — must NOT prompt to remove from config
+    monkeypatch.setenv("RD_TOKEN", "env-tok")
+    path = tmp_path / "config.toml"
+    path.write_text('[real_debrid]\ntoken = "different-config-tok"\n', encoding="utf-8")
+    with patch.object(th, "_config_path", lambda: path), \
+         patch.object(th, "_rd_request", return_value=None) as m_req, \
+         patch("builtins.input") as m_input:
+        rc = th._revoke_rd_token()
+    assert rc == 0
+    m_req.assert_called_once_with("GET", "/disable_access_token", token="env-tok")
+    m_input.assert_not_called()  # no prompt
+    out = capsys.readouterr().out
+    assert "RD_TOKEN env var" in out
+    # Config file untouched
+    assert 'different-config-tok' in path.read_text(encoding="utf-8")
+
+
+def test_revoke_rd_token_config_yes_removes(th, tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv("RD_TOKEN", raising=False)
+    path = tmp_path / "config.toml"
+    path.write_text('[real_debrid]\ntoken = "saved-tok"\naction = "downie"\n', encoding="utf-8")
+    with patch.object(th, "_config_path", lambda: path), \
+         patch.object(th, "_rd_request", return_value=None) as m_req, \
+         patch("builtins.input", return_value="y"):
+        rc = th._revoke_rd_token()
+    assert rc == 0
+    m_req.assert_called_once_with("GET", "/disable_access_token", token="saved-tok")
+    # Token removed, action preserved
+    new_text = path.read_text(encoding="utf-8")
+    assert "saved-tok" not in new_text
+    assert 'action = "downie"' in new_text
+
+
+def test_revoke_rd_token_config_no_keeps(th, tmp_path, monkeypatch):
+    monkeypatch.delenv("RD_TOKEN", raising=False)
+    path = tmp_path / "config.toml"
+    path.write_text('[real_debrid]\ntoken = "saved-tok"\n', encoding="utf-8")
+    with patch.object(th, "_config_path", lambda: path), \
+         patch.object(th, "_rd_request", return_value=None), \
+         patch("builtins.input", return_value="n"):
+        rc = th._revoke_rd_token()
+    assert rc == 0
+    assert "saved-tok" in path.read_text(encoding="utf-8")  # untouched
+
+
+def test_revoke_rd_token_rd_error_returns_nonzero(th, capsys, monkeypatch):
+    monkeypatch.setenv("RD_TOKEN", "tok")
+    with patch.object(th, "_load_config", return_value={}), \
+         patch.object(th, "_rd_request", side_effect=th._RdError("already invalid")):
+        rc = th._revoke_rd_token()
+    assert rc == 1
+    assert "already invalid" in capsys.readouterr().out
+
+
 def test_prompt_rd_token_tty_uses_getpass(th):
     with patch.object(th.sys.stdin, "isatty", return_value=True), \
          patch.object(th.getpass, "getpass", return_value="tty-token") as m_gp:

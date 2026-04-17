@@ -159,6 +159,39 @@ def _print_config_path():
     return 0
 
 
+def _revoke_rd_token():
+    """Invalidate the current RD token via GET /disable_access_token, then offer to wipe it from config."""
+    config = _load_config()
+    env_token = os.environ.get("RD_TOKEN")
+    config_token = (config.get("real_debrid") or {}).get("token")
+    token = env_token or config_token
+    if not token:
+        print("No RD token configured to revoke.")
+        return 1
+    try:
+        _rd_request("GET", "/disable_access_token", token=token)
+    except _RdError as e:
+        print(str(e))
+        return 1
+    print("Token invalidated on Real-Debrid's side.")
+
+    if env_token:
+        # Don't touch config — env var's token is distinct from whatever's saved.
+        print("(Token came from RD_TOKEN env var; unset it in your shell to clear locally.)")
+        return 0
+    if config_token:
+        ans = input(f"Remove the token from {_config_path()}? [y/N] ")
+        if ans.strip().lower() == "y":
+            config["real_debrid"].pop("token", None)
+            try:
+                _save_config(config)
+            except OSError as e:
+                print(f"Failed to update config: {e}")
+                return 1
+            print(f"Token removed from {_config_path()}.")
+    return 0
+
+
 def _user_status():
     """Print a terse RD account summary via GET /user. Exit 0 on success, 1 on error."""
     config = _load_config()
@@ -1214,6 +1247,7 @@ def main():
     parser.add_argument('--set-rd-token', help='Prompt for a Real-Debrid token and save it to config', default=False, action='store_true', dest='set_rd_token')
     parser.add_argument('--config-path', help='Print the resolved config file path and exit', default=False, action='store_true', dest='config_path')
     parser.add_argument('--user-status', help='Show RD account info (token validity, premium expiration, points) and exit', default=False, action='store_true', dest='user_status')
+    parser.add_argument('--revoke-rd-token', help='Invalidate the current RD token on Real-Debrid and optionally remove it from config', default=False, action='store_true', dest='revoke_rd_token')
 
     args = parser.parse_args()
 
@@ -1223,6 +1257,8 @@ def main():
         sys.exit(_set_rd_token())
     if args.user_status:
         sys.exit(_user_status())
+    if args.revoke_rd_token:
+        sys.exit(_revoke_rd_token())
 
     if args.query:
         query = ' '.join(args.query)
