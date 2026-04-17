@@ -7,6 +7,8 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-04-18
+
 ### Changed
 - Shell completion setup now uses `torrent-hound --print-completion {bash,zsh}`
   instead of `register-python-argcomplete torrent-hound`. The latter ships
