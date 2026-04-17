@@ -658,6 +658,52 @@ def test_cmd_rd_cached_but_links_not_ready(th, capsys, monkeypatch):
     assert "magnet_conversion" in out
 
 
+def test_cmd_rd_already_selected_skips_selectfiles(th, capsys, monkeypatch):
+    # Re-run case: peek info shows files with selected==1 from a prior submission.
+    # Per RD docs, selectFiles is immutable — a second call would return 202.
+    # We must skip selectFiles entirely and use the existing links from the peek.
+    monkeypatch.setenv("RD_TOKEN", "tok")
+    peek = {
+        "status": "downloaded",
+        "files": [{"id": 1, "path": "/x.mkv", "bytes": 1024, "selected": 1}],
+        "links": ["https://rd/link-1"],
+    }
+    with patch.object(th, "_load_config", return_value={}), \
+         patch.object(th, "_rd_check_cached", return_value=True), \
+         patch.object(th, "_rd_add_magnet", return_value="tid"), \
+         patch.object(th, "_rd_select_files") as m_select, \
+         patch.object(th, "_rd_get_info", return_value=peek), \
+         patch.object(th, "_rd_unrestrict", return_value="https://d.rd/x"), \
+         patch.object(th.pyperclip, "copy") as m_copy:
+        th._cmd_rd(_entry())
+    m_select.assert_not_called()
+    m_copy.assert_called_once_with("https://d.rd/x")
+    assert "already submitted" in capsys.readouterr().out
+
+
+def test_cmd_rd_already_selected_no_links_yet(th, capsys, monkeypatch):
+    # Already-selected but RD hasn't populated links — should still hit the
+    # "hasn't finished processing" path, NOT crash or re-call selectFiles.
+    monkeypatch.setenv("RD_TOKEN", "tok")
+    peek = {
+        "status": "uploading",
+        "files": [{"id": 1, "path": "/x.mkv", "bytes": 1024, "selected": 1}],
+        "links": [],
+    }
+    with patch.object(th, "_load_config", return_value={}), \
+         patch.object(th, "_rd_check_cached", return_value=True), \
+         patch.object(th, "_rd_add_magnet", return_value="tid"), \
+         patch.object(th, "_rd_select_files") as m_select, \
+         patch.object(th, "_rd_get_info", return_value=peek), \
+         patch.object(th, "_rd_unrestrict") as m_unrestrict:
+        th._cmd_rd(_entry())
+    m_select.assert_not_called()
+    m_unrestrict.assert_not_called()
+    out = capsys.readouterr().out
+    assert "hasn't finished processing" in out
+    assert "uploading" in out
+
+
 def test_cmd_rd_rd_error_printed_not_raised(th, capsys, monkeypatch):
     monkeypatch.setenv("RD_TOKEN", "tok")
     with patch.object(th, "_load_config", return_value={}), \

@@ -943,17 +943,25 @@ def _cmd_rd(entry):
         # Peek once to see how many files RD parsed out.
         info = _rd_get_info(torrent_id, token=token)
         files = info.get("files") or []
-        if len(files) <= 1:
-            selection = "all"
-        else:
-            torrent_name = entry.get("name", info.get("filename", "this torrent"))
-            selection = _rd_prompt_file_selection(files, torrent_name=torrent_name)
-            if selection == "cancel":
-                print("Cancelled. Torrent not debrided.")
-                return
 
-        _rd_select_files(torrent_id, selection, token=token)
-        info = _rd_get_info(torrent_id, token=token)
+        # Re-run case: if any file is already selected (selected==1), the user
+        # has been through this torrent before. Per RD docs, selectFiles is
+        # immutable — calling it again would return 202 "Action already done".
+        # Skip selection entirely and use the existing links from the peek.
+        already_selected = any(f.get("selected") == 1 for f in files)
+        if already_selected:
+            print("Torrent was already submitted. Using prior file selection.")
+        else:
+            if len(files) <= 1:
+                selection = "all"
+            else:
+                torrent_name = entry.get("name", info.get("filename", "this torrent"))
+                selection = _rd_prompt_file_selection(files, torrent_name=torrent_name)
+                if selection == "cancel":
+                    print("Cancelled. Torrent not debrided.")
+                    return
+            _rd_select_files(torrent_id, selection, token=token)
+            info = _rd_get_info(torrent_id, token=token)
 
         bad_statuses = ("error", "magnet_error", "virus", "dead")
         status = info.get("status")
