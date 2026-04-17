@@ -1219,7 +1219,7 @@ def switch(arg):
         query = input("Enter query : ")
         if query == '':
             query = defaultQuery
-        searchAllSites(query, force_search=True)
+        searchAllSites(query)
         printTopResults()
     elif arg == 'r':
         searchAllSites(query)
