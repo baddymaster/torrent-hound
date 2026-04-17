@@ -1038,34 +1038,38 @@ def _cmd_rd(entry):
         return
 
     try:
+        # Cache check is informational only — RD has been disabling instantAvailability
+        # per-account since ~2024 (returns error_code 37, which _rd_check_cached
+        # swallows and returns False). Both paths converge below: addMagnet → peek
+        # info → picker-or-skip → select → info → unrestrict → dispatch. Users with
+        # a working cache endpoint just see a nicer "Cached..." message.
         cached = _rd_check_cached(info_hash, token=token)
+        print("Cached on Real-Debrid. Fetching direct link..." if cached else "Submitting to Real-Debrid...")
 
-        if not cached:
-            ans = input("Not cached on Real-Debrid. Submit anyway? Uses your fair-use quota. [y/N] ")
-            if ans.strip().lower() != "y":
-                return
-            torrent_id = _rd_add_magnet(entry["magnet"], token=token)
-            _rd_select_files(torrent_id, "all", token=token)
-            webbrowser.open("https://real-debrid.com/torrents")
-            print("Submitted. Run the same rd command again once it's ready.")
-            return
-
-        print("Cached on Real-Debrid. Fetching direct link...")
         torrent_id = _rd_add_magnet(entry["magnet"], token=token)
 
-        # Peek once to see how many files RD parsed out.
+        # Peek info. RD de-dupes the same magnet to a consistent torrent id on
+        # re-runs, so `selected == 1` below lets us skip the redundant picker.
         info = _rd_get_info(torrent_id, token=token)
         files = info.get("files") or []
 
-        # Re-run case: if any file is already selected (selected==1), the user
-        # has been through this torrent before. Per RD docs, selectFiles is
-        # immutable — calling it again would return 202 "Action already done".
-        # Skip selection entirely and use the existing links from the peek.
+        if not files:
+            # Magnet hasn't been resolved into file metadata yet — transient state
+            # during `magnet_conversion`. Re-running rd<n> in a moment usually works.
+            print(
+                "Real-Debrid is still resolving the magnet (no files listed yet). "
+                "Run the rd command again in a moment."
+            )
+            return
+
+        # Re-run case: if any file is already selected, we've been through this
+        # torrent before. Per RD docs selectFiles is immutable (returns 202 on
+        # repeat). Skip the picker + selectFiles call entirely.
         already_selected = any(f.get("selected") == 1 for f in files)
         if already_selected:
             print("Torrent was already submitted. Using prior file selection.")
         else:
-            if len(files) <= 1:
+            if len(files) == 1:
                 selection = "all"
             else:
                 torrent_name = entry.get("name", info.get("filename", "this torrent"))
@@ -1084,9 +1088,13 @@ def _cmd_rd(entry):
 
         links = info.get("links") or []
         if not links:
-            # Cached but RD hasn't populated links yet (brief lag between selectFiles and
-            # 'downloaded' state). No polling per spec — ask user to re-run.
-            print(f"Real-Debrid hasn't finished processing yet (status: {status}). Run the rd command again in a moment.")
+            # RD hasn't populated the hoster links yet. For cached content this
+            # finishes in ~1-2s; uncached content may take longer depending on swarm.
+            # Either way, re-running rd<n> after a moment progresses the flow.
+            print(
+                f"Real-Debrid hasn't finished processing yet (status: {status}). "
+                f"Run the rd command again in a moment."
+            )
             return
 
         direct_links = [_rd_unrestrict(link, token=token) for link in links]

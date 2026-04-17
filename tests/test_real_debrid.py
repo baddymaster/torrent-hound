@@ -692,28 +692,73 @@ def test_cmd_rd_cached_multi_file_cancel(th, capsys, monkeypatch):
     assert "Cancelled" in capsys.readouterr().out
 
 
-def test_cmd_rd_uncached_yes(th, capsys, monkeypatch):
+def test_cmd_rd_uncached_reaches_unrestrict_and_action(th, capsys, monkeypatch):
+    # Critical fix: when cache check returns False (RD disabled instantAvailability
+    # for this account), the flow must still unrestrict and dispatch the action.
+    # No "submit anyway?" prompt, no dead-end browser open.
     monkeypatch.setenv("RD_TOKEN", "tok")
+    peek = _fake_info(files=[{"id": 1, "path": "/x.mkv", "bytes": 1024}], links=[])
+    post = _fake_info(
+        files=[{"id": 1, "path": "/x.mkv", "bytes": 1024, "selected": 1}],
+        links=["https://rd/link-1"],
+    )
     with patch.object(th, "_load_config", return_value={}), \
          patch.object(th, "_rd_check_cached", return_value=False), \
          patch.object(th, "_rd_add_magnet", return_value="tid"), \
          patch.object(th, "_rd_select_files") as m_select, \
-         patch("builtins.input", return_value="y"), \
-         patch.object(th.webbrowser, "open") as m_open:
+         patch.object(th, "_rd_get_info", side_effect=[peek, post]), \
+         patch.object(th, "_rd_unrestrict", return_value="https://d.rd/x"), \
+         patch.object(th.pyperclip, "copy") as m_copy, \
+         patch.object(th.webbrowser, "open") as m_open, \
+         patch("builtins.input") as m_input:
         th._cmd_rd(_entry())
     m_select.assert_called_once_with("tid", "all", token="tok")
-    m_open.assert_called_once_with("https://real-debrid.com/torrents")
-    assert "Submitted" in capsys.readouterr().out
+    m_copy.assert_called_once_with("https://d.rd/x")
+    m_input.assert_not_called()  # no "submit anyway?" prompt
+    m_open.assert_not_called()   # no browser redirect to RD torrents page
+    out = capsys.readouterr().out
+    assert "Submitting to Real-Debrid" in out
 
 
-def test_cmd_rd_uncached_no(th, monkeypatch):
+def test_cmd_rd_magnet_still_resolving_asks_retry(th, capsys, monkeypatch):
+    # RD hasn't parsed the magnet yet (transient magnet_conversion state, no files).
+    # Special-case message that doesn't try to picker/select/unrestrict an empty list.
     monkeypatch.setenv("RD_TOKEN", "tok")
+    info_no_files = {"status": "magnet_conversion", "files": [], "links": []}
     with patch.object(th, "_load_config", return_value={}), \
          patch.object(th, "_rd_check_cached", return_value=False), \
-         patch.object(th, "_rd_add_magnet") as m_add, \
-         patch("builtins.input", return_value="n"):
+         patch.object(th, "_rd_add_magnet", return_value="tid"), \
+         patch.object(th, "_rd_select_files") as m_select, \
+         patch.object(th, "_rd_get_info", return_value=info_no_files), \
+         patch.object(th, "_rd_unrestrict") as m_unrestrict, \
+         patch.object(th.webbrowser, "open") as m_open:
         th._cmd_rd(_entry())
-    m_add.assert_not_called()
+    m_select.assert_not_called()
+    m_unrestrict.assert_not_called()
+    m_open.assert_not_called()
+    out = capsys.readouterr().out
+    assert "still resolving" in out
+    assert "Run the rd command again" in out
+
+
+def test_cmd_rd_uncached_links_empty_after_select_asks_retry(th, capsys, monkeypatch):
+    # Uncached submit, files populate, selectFiles succeeds, but RD hasn't yet
+    # made the hoster links. Ask user to re-run rather than silently dispatching
+    # an empty action or crashing.
+    monkeypatch.setenv("RD_TOKEN", "tok")
+    peek = _fake_info(files=[{"id": 1, "path": "/x.mkv", "bytes": 1024}], links=[])
+    post = {"status": "queued", "files": peek["files"], "links": []}
+    with patch.object(th, "_load_config", return_value={}), \
+         patch.object(th, "_rd_check_cached", return_value=False), \
+         patch.object(th, "_rd_add_magnet", return_value="tid"), \
+         patch.object(th, "_rd_select_files"), \
+         patch.object(th, "_rd_get_info", side_effect=[peek, post]), \
+         patch.object(th, "_rd_unrestrict") as m_unrestrict:
+        th._cmd_rd(_entry())
+    m_unrestrict.assert_not_called()
+    out = capsys.readouterr().out
+    assert "hasn't finished processing" in out
+    assert "queued" in out
 
 
 def test_cmd_rd_bad_hash(th, capsys, monkeypatch):
