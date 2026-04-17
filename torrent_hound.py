@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 # @author : Yashovardhan Sharma
 # @github : github.com/baddymaster
 
@@ -38,6 +39,7 @@ if sys.version_info >= (3, 11):
 else:
     import tomli as tomllib  # backport; same API surface we use
 
+import argcomplete
 import platformdirs
 import pyperclip
 import requests
@@ -1348,6 +1350,7 @@ def main():
     global query, exit
 
     parser = _build_parser()
+    argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
     if args.config_path:
