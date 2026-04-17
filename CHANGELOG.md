@@ -9,34 +9,6 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [2.5.0] - 2026-04-17
 
-- Updating gitignore
-- Expanding CHANGELOG with full Real-Debrid integration and hardening summary
-- Trimming README: compressing install/dev sections, adding rd<n> command, reorganising RD setup around --configure-rd
-- Replacing --set-rd-token with --configure-rd for one-step interactive token + action setup
-- Restructuring _cmd_rd into a single converged flow so rd<n> completes when RD has disabled instantAvailability
-- Suppressing error_code 37/3 in _rd_check_cached so disabled instantAvailability degrades to 'submit anyway?' prompt
-- Adding single 60s retry on RD rate-limit responses before surfacing the error
-- Adding --revoke-rd-token flag to invalidate tokens via /disable_access_token
-- Adding --user-status flag to verify token and account state via GET /user
-- Adding specific user messages for HTTP 400 and 404 from RD
-- Detecting already-selected RD torrents to skip redundant selectFiles on re-run
-- Correcting RD status-code comments and documenting instantAvailability as unofficial
-- Surfacing RD error_code with specific user messages for documented API codes
-- Handling HTTP 202 from RD selectFiles as idempotent success (already-selected case)
-- Parametrizing RD bad-status test over all four terminal states (error/magnet_error/virus/dead)
-- Rejecting non-ASCII digits in RD selection parser to avoid Unicode surprise
-- Renaming CLI-flag helpers to drop misleading _cmd_ prefix (_cmd_ is for numeric REPL handlers)
-- Making cached-single-file test use two-phase get_info to mirror real RD lifecycle
-- Dropping username path from 401 error message to avoid leaking $HOME in shared reports
-- Stripping ANSI escape sequences from torrent names and filenames in RD picker
-- Reverting _NUMERIC_CMDS to direct function refs; dispatch test observes side effects
-- Guarding _cmd_rd against KeyError/TypeError and _rd_request against non-JSON 200
-- Rejecting non-https direct-link schemes in RD action dispatch
-- Hardening config file permissions to 0600 and parent dir to 0700
-- Fixing empty-args regression where nargs='*' iterated the string default
-- Adding --set-rd-token and --config-path flags for token management
-- Adding Real-Debrid integration: rd<n> command, multi-file picker, four action modes
-- Adding Real-Debrid config scaffolding: platformdirs/tomli deps, TOML loader, token resolution
 ### Added
 - Real-Debrid integration via `rd<n>` command — submits the selected torrent to RD, waits for hoster links, and dispatches to a configurable action
 - Four action modes: `clipboard` (default), `print`, `browser`, `downie` (via `downie://XUL/?url=` URL scheme on macOS)
