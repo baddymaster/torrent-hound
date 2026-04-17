@@ -37,78 +37,26 @@ All sources are searched in parallel.
 ## Requirements
 
 - Python 3.9+
-- Runtime dependencies: `beautifulsoup4`, `requests`, `pyperclip`, `rich`
+- Runtime dependencies: `beautifulsoup4`, `requests`, `pyperclip`, `rich`, `platformdirs`, `tomli_w`
 
 ## Install
 
-### Via pipx (recommended)
-
-[`pipx`](https://pipx.pypa.io/) installs each Python CLI into its own isolated
-venv and automatically puts the entry point on your `$PATH`.
-
-```
-pipx install torrent-hound
+```bash
+pipx install torrent-hound          # recommended — isolated venv, auto-PATH
+pip install torrent-hound           # or plain pip
 ```
 
-If you don't already have pipx: `brew install pipx` (macOS), `sudo apt install pipx` (Ubuntu/Debian), or `python3 -m pip install --user pipx && python3 -m pipx ensurepath`.
+Pre-built standalone binaries (no Python required) for Linux / macOS / Windows are on the [Releases page](https://github.com/baddymaster/torrent-hound/releases/latest).
 
-### Via pip
+From source:
 
-```
-pip install torrent-hound
-```
-
-Whether this lands `torrent-hound` on your `$PATH` depends on *where* pip
-installed its scripts directory:
-
-- **Inside an active venv**: always on PATH while the venv is active.
-- **`pip install --user` (macOS / Linux)**: scripts go to `~/.local/bin`. Add it to PATH if missing:
-    ```
-    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc   # or ~/.bashrc
-    ```
-    Reload your shell, or run `source ~/.zshrc`.
-- **`pip install --user` (Windows)**: scripts go to `%APPDATA%\Python\PythonXX\Scripts`. Find the exact path with `python -m site --user-base`, then add that `Scripts` directory to PATH via **System Properties → Environment Variables**.
-- **System-wide `sudo pip install`** (Linux/macOS): scripts go to `/usr/local/bin`, which is almost always on PATH. Modern Python distributions may refuse this install with a PEP 668 "externally-managed-environment" error — prefer pipx or a venv instead.
-
-Upgrade later with `pip install -U torrent-hound` (or `pipx upgrade torrent-hound`).
-
-### Standalone binary (no Python required)
-
-Download the latest pre-built binary for your platform from the
-[Releases page](https://github.com/baddymaster/torrent-hound/releases/latest),
-make it executable, and run it directly:
-
-```
-# macOS / Linux
-chmod +x torrent-hound-macos    # or torrent-hound-linux
-./torrent-hound-macos ubuntu
-
-# Optionally move it onto your PATH
-mv torrent-hound-macos ~/.local/bin/torrent-hound
-```
-
-On Windows, download `torrent-hound-windows.exe` and run it from the command prompt.
-
-### From source
-
-```
+```bash
 git clone https://github.com/baddymaster/torrent-hound.git
 cd torrent-hound
-
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .          # installs deps + puts torrent-hound on PATH
-```
-
-For development (adds pytest + ruff):
-
-```
-pip install -e ".[dev]"
+pip install -e ".[dev]"             # installs deps + pytest + ruff
 ```
 
 ## Usage
-
-### Interactive mode (default)
 
 ```
 torrent-hound ubuntu
@@ -116,29 +64,24 @@ torrent-hound ubuntu
 
 Results render as a table; enter a command at the prompt.
 
-| Command  | Action                                                  |
-|----------|---------------------------------------------------------|
-| `m<n>`   | Print the magnet link for result `<n>`                  |
-| `c<n>`   | Copy the magnet link to clipboard                       |
-| `cs<n>`  | Copy the magnet and open Seedr.cc                       |
-| `d<n>`   | Hand the magnet to your default torrent client          |
-| `o<n>`   | Open the torrent page in your default browser           |
-| `p`      | Re-print the results table                              |
-| `s`      | Enter a new query and search again                      |
-| `r`      | Repeat the last search                                  |
-| `u`      | Show the source URLs used for the current results       |
-| `h`      | Show the help menu                                      |
-| `q`      | Quit                                                    |
+| Command  | Action                                                                     |
+|----------|----------------------------------------------------------------------------|
+| `m<n>`   | Print the magnet link for result `<n>`                                     |
+| `c<n>`   | Copy the magnet link to clipboard                                          |
+| `cs<n>`  | Copy the magnet and open Seedr.cc                                          |
+| `rd<n>`  | Debrid via Real-Debrid and dispatch via configured action (requires token) |
+| `d<n>`   | Hand the magnet to your default torrent client                             |
+| `o<n>`   | Open the torrent page in your default browser                              |
+| `p`      | Re-print the results table                                                 |
+| `s`      | Enter a new query and search again                                         |
+| `r`      | Repeat the last search                                                     |
+| `u`      | Show the source URLs used for the current results                          |
+| `h`      | Show the help menu                                                         |
+| `q`      | Quit                                                                       |
 
 ### Scripting mode
 
-Non-interactive output, parseable from a pipeline:
-
-```
-# Python-repr output (legacy, --quiet / -q):
-torrent-hound -q ubuntu
-
-# JSON output:
+```bash
 torrent-hound --json ubuntu | jq '.tpb.results["0"].magnet'
 ```
 
@@ -146,26 +89,12 @@ torrent-hound --json ubuntu | jq '.tpb.results["0"].magnet'
 
 ## Development
 
-### Running tests
-
-```
+```bash
 pip install -e ".[dev]"
 pytest tests/
 ```
 
-The suite runs fully offline (no network calls) — it uses a captured fixture
-HTML response for parser tests and mocks `requests.get` for the fallback-
-chain tests.
-
-### Project layout
-
-```
-torrent_hound.py      # single-file entry point
-pyproject.toml        # packaging, deps, ruff config, pytest config
-tests/                # pytest suite
-  conftest.py         # loads torrent_hound.py as a module
-  fixtures/           # saved HTML responses for offline parser tests
-```
+Tests run fully offline — parser fixtures are captured HTML, network calls are mocked.
 
 ## Real-Debrid integration
 
@@ -173,16 +102,41 @@ Torrent Hound can send a selected torrent to [Real-Debrid](https://real-debrid.c
 
 ### Setup
 
-1. Get an API token from [https://real-debrid.com/apitoken](https://real-debrid.com/apitoken).
-2. Either export it as an env var:
-   ```bash
-   export RD_TOKEN="..."
-   ```
-   …or save it to the config file (see below).
+One-command interactive setup:
+
+```bash
+torrent-hound --configure-rd
+```
+
+Prompts for your API token (get one at [real-debrid.com/apitoken](https://real-debrid.com/apitoken)) and the action to run against returned direct links, then writes them to the config file with restrictive permissions.
+
+Alternatively, set `RD_TOKEN` as an env var for ad-hoc use without saving anything:
+
+```bash
+export RD_TOKEN="..."
+```
+
+### Action modes
+
+| Mode        | What happens with the direct link(s)                                                    |
+|-------------|-----------------------------------------------------------------------------------------|
+| `clipboard` | *(default)* Copied to clipboard. Multiple links are joined with newlines.               |
+| `print`     | Printed to stdout.                                                                      |
+| `browser`   | Opened in your default browser (works without a separate download manager).             |
+| `downie`    | Sent to [Downie 4](https://software.charliemonroe.net/downie/) via its `downie://` URL scheme (macOS). |
+
+### Convenience flags
+
+```bash
+torrent-hound --configure-rd      # interactive setup (token + action)
+torrent-hound --config-path       # print the resolved config file path
+torrent-hound --user-status       # show RD account info (premium, expiration, points)
+torrent-hound --revoke-rd-token   # invalidate the current token on RD
+```
 
 ### Config file
 
-Torrent Hound reads `~/Library/Application Support/torrent-hound/config.toml` on macOS, `~/.config/torrent-hound/config.toml` on Linux, and `%APPDATA%\torrent-hound\config.toml` on Windows. Example:
+Path: `~/Library/Application Support/torrent-hound/config.toml` (macOS) / `~/.config/torrent-hound/config.toml` (Linux) / `%APPDATA%\torrent-hound\config.toml` (Windows). Managed by `--configure-rd`, but the format is plain TOML if you ever want to edit it directly:
 
 ```toml
 [real_debrid]
@@ -190,45 +144,25 @@ token  = "XXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 action = "downie"
 ```
 
-### Convenience flags
-
-```
-torrent-hound --set-rd-token     # prompts for the token (input hidden) and writes it to config.toml
-torrent-hound --config-path      # prints the resolved config file path
-```
-
-### Action modes
-
-Set `action` to one of:
-
-| Mode        | What happens with the direct link(s)                                                    |
-|-------------|-----------------------------------------------------------------------------------------|
-| `clipboard` | *(default)* Copied to clipboard. Multiple links are joined with newlines.                |
-| `print`     | Printed to stdout.                                                                      |
-| `browser`   | Opened in your default browser (works out of the box without a download manager).        |
-| `downie`    | Sent to [Downie 4](https://software.charliemonroe.net/downie/) via its `downie://` URL scheme (macOS). |
-
 ### Usage
 
-After a search, type `rd<n>` at the prompt (e.g. `rd3` for the third result).
+After a search, type `rd<n>` (e.g. `rd3`). The flow submits the torrent to RD, waits for the hoster links, then runs your configured action. Multi-file torrents open an interactive file picker on the first invocation so you can choose exactly what to debrid.
 
-- **If the torrent is cached on RD**, you get the direct link(s) immediately via your configured action. Multi-file torrents (season packs, scene releases with samples) open an interactive file picker so you can choose exactly what to debrid.
-- **If not cached**, you'll be asked whether to submit it anyway (uses your fair-use quota). On `y`, the torrent is queued on RD and the torrents page opens in your browser; run `rd<n>` again once it's ready.
+If RD is still processing (common for larger or uncached torrents), you'll see a short "run again in a moment" message — re-running `rd<n>` picks up where it left off without re-prompting the picker.
 
 ### Troubleshooting
 
-- `Real-Debrid rejected the token` — check `RD_TOKEN` or the `token` line in `config.toml`.
-- `DNS lookup for api.real-debrid.com failed` — your ISP/DNS may be blocking Real-Debrid. Try a VPN or a DoH resolver (`1.1.1.1`, `8.8.8.8`).
-- `reachable but returning a block page` — the connection is being filtered by a CDN or transparent proxy. Try a VPN.
-- `Unknown rd action 'xxx'` — your `[real_debrid].action` value isn't one of `clipboard`, `print`, `browser`, or `downie`. Fix it in `config.toml`.
+- `Real-Debrid rejected the token` — run `torrent-hound --configure-rd` to enter a fresh one.
+- Connectivity errors (`DNS lookup failed`, `block page`, geo-block) — your ISP / network / proxy is filtering the RD API. Try a VPN or a DoH resolver (`1.1.1.1`, `8.8.8.8`).
+- Anything else — run `torrent-hound --user-status` to check your account. Specific error messages reference RD's documented `error_code` values and link to what to do.
 
 ## Troubleshooting
 
-**SSL handshake errors**: see [these Stack Overflow answers](https://stackoverflow.com/questions/31649390/python-requests-ssl-handshake-failure) for common fixes.
+- **SSL handshake errors**: see [these Stack Overflow answers](https://stackoverflow.com/questions/31649390/python-requests-ssl-handshake-failure) for common fixes.
 
-**`[PirateBay] Error : All known mirrors returned no results or were unreachable`**: every TPB domain in the fallback chain is blocked or down. Add a known-working mirror to `TPB_DOMAINS` at the top of `torrent-hound.py`.
+- **`[PirateBay] Error : All known mirrors returned no results or were unreachable`**: every TPB domain in the fallback chain is blocked or down. Add a known-working mirror to `TPB_DOMAINS` at the top of `torrent-hound.py`.
 
-**Blocked by Cloudflare captcha**: some sources serve a CF challenge that requires a real browser.
+- **Blocked by Cloudflare captcha**: some sources serve a CF challenge that requires a real browser.
 
 ## Disclaimer
 
