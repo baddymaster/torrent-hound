@@ -11,3 +11,4 @@ dist/
 build/
 *.egg-info/
 *.spec
+torrent-hound_v1/
