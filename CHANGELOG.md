@@ -13,7 +13,8 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   "Shell completion" section for the exact commands per shell.
 - In-memory per-session result cache (5-min TTL, keyed by normalized
   query + source). Repeat queries within a session return instantly;
-  `r` command bypasses the cache and forces a fresh fetch.
+  `r` retries any sources that previously errored while reusing cached
+  ones. Re-launch the CLI to force a fresh fetch of all sources.
 
 ## [2.5.0] - 2026-04-17
 

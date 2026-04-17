@@ -98,7 +98,7 @@ Results render as a table; enter a command at the prompt.
 | `o<n>`   | Open the torrent page in your default browser                              |
 | `p`      | Re-print the results table                                                 |
 | `s`      | Enter a new query and search again                                         |
-| `r`      | Repeat the last search (bypasses the 5-min result cache)                   |
+| `r`      | Repeat the last search (cached sources reused; failed sources retry)       |
 | `u`      | Show the source URLs used for the current results                          |
 | `h`      | Show the help menu                                                         |
 | `q`      | Quit                                                                       |
