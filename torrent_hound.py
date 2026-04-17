@@ -732,7 +732,8 @@ def _rd_request(method, path, token, data=None):
         # torrent. Body is empty; treat as idempotent success.
         return None
     if 200 <= s < 300:
-        # RD returns 200 for GETs and 201 for addMagnet/unrestrict. Both carry JSON.
+        # Per RD docs (https://api.real-debrid.com/): 200 for GETs and POST /unrestrict/link,
+        # 201 for POST /torrents/addMagnet and PUT /torrents/addTorrent. All carry JSON.
         try:
             return resp.json()
         except ValueError:
@@ -773,6 +774,13 @@ def _rd_request(method, path, token, data=None):
     raise _RdError(f"Real-Debrid error {s}. Try again.")
 
 
+# NOTE: /torrents/instantAvailability/{hash} is NOT in the official RD REST API v1
+# docs at https://api.real-debrid.com/. It's a community-known endpoint used by
+# every major third-party RD client (Prowlarr, rdtclient, py-real-debrid, Stremio
+# addons, etc.). The {HASH: {"rd": [...]}} response shape is also folklore. If RD
+# ever removes the endpoint, _rd_check_cached will start returning False for every
+# hash and the rd<n> flow will fall through to the "submit anyway?" prompt — still
+# functional, just degraded UX.
 def _rd_check_cached(info_hash, token):
     data = _rd_request("GET", f"/torrents/instantAvailability/{info_hash}", token=token) or {}
     entry = data.get(info_hash) or data.get(info_hash.upper()) or {}
