@@ -1222,7 +1222,7 @@ def switch(arg):
         searchAllSites(query)
         printTopResults()
     elif arg == 'r':
-        searchAllSites(query)
+        searchAllSites(query, force_search=True)
         printTopResults()
     else:
         print('Invalid command!\n')
