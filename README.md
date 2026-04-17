@@ -37,7 +37,7 @@ All sources are searched in parallel.
 ## Requirements
 
 - Python 3.9+
-- Runtime dependencies: `beautifulsoup4`, `requests`, `pyperclip`, `rich`, `platformdirs`, `tomli_w`
+- Runtime dependencies: `beautifulsoup4`, `requests`, `pyperclip`, `rich`, `platformdirs`, `tomli_w`, `argcomplete`
 
 ## Install
 
