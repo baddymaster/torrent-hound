@@ -137,20 +137,71 @@ def _prompt_rd_token():
     return sys.stdin.readline().strip()
 
 
-def _set_rd_token():
-    """Prompt for a token and save it, preserving other config keys. Returns exit code."""
+_RD_ACTION_DESCRIPTIONS = {
+    "clipboard": "Copy to clipboard; multi-link joined with newlines",
+    "print":     "Print to stdout",
+    "browser":   "Open in default browser",
+    "downie":    "Send to Downie 4 via downie:// URL scheme (macOS)",
+}
+
+
+def _prompt_rd_action(default):
+    """Interactive numbered picker for the RD action. Returns a valid action string.
+
+    `default` is pre-selected and used on empty input. Re-prompts on invalid input.
+    """
+    items = list(_RD_VALID_ACTIONS)
+    default_idx = items.index(default) + 1 if default in items else 1
+    pad = max(len(n) for n in items) + len(" (default)")
+    print("\nAction — what to do with direct links after rd<n> unrestricts them:")
+    for i, name in enumerate(items, start=1):
+        marker = " (default)" if i == default_idx else ""
+        display = f"{name}{marker}".ljust(pad)
+        print(f"  {i}. {display}  {_RD_ACTION_DESCRIPTIONS[name]}")
+    while True:
+        choice = input(f"Select [1-{len(items)}, Enter for default]: ").strip()
+        if not choice:
+            return items[default_idx - 1]
+        try:
+            n = int(choice)
+            if 1 <= n <= len(items):
+                return items[n - 1]
+        except ValueError:
+            pass
+        print("Invalid selection, try again.")
+
+
+def _configure_rd():
+    """Interactive RD setup: prompt for token + action, write both to config.
+
+    Supersedes the old --set-rd-token flow. Piped stdin (non-TTY) reads the token
+    from the first line and preserves the existing action (or clipboard default)
+    — this keeps `echo $TOKEN | torrent-hound --configure-rd` scripting workable.
+    """
     token = _prompt_rd_token()
     if not token:
         print("No token entered; aborting.")
         return 1
+
     config = _load_config()
+    existing_action = (config.get("real_debrid") or {}).get("action") or "clipboard"
+    if existing_action not in _RD_VALID_ACTIONS:
+        existing_action = "clipboard"
+
+    if sys.stdin.isatty():
+        action = _prompt_rd_action(default=existing_action)
+    else:
+        action = existing_action
+
     config.setdefault("real_debrid", {})["token"] = token
+    config["real_debrid"]["action"] = action
+
     try:
         _save_config(config)
     except OSError as e:
         print(f"Failed to write config: {e}")
         return 1
-    print(f"Real-Debrid token saved to {_config_path()}")
+    print(f"Real-Debrid setup saved to {_config_path()}")
     return 0
 
 
@@ -199,7 +250,7 @@ def _user_status():
     if not token:
         print(
             "Real-Debrid token not configured. Set RD_TOKEN env var or run "
-            "torrent-hound --set-rd-token."
+            "torrent-hound --configure-rd."
         )
         return 1
     try:
@@ -755,7 +806,7 @@ def _rd_has_cdn_markers(headers):
 # user-facing message lets us distinguish "your account is locked" from "your IP
 # isn't whitelisted" — both 403s but completely different remediations.
 _RD_ERROR_MESSAGES = {
-    8:  "Real-Debrid rejected the token. Run `torrent-hound --set-rd-token` to enter a fresh one, or set the RD_TOKEN env var.",
+    8:  "Real-Debrid rejected the token. Run `torrent-hound --configure-rd` to enter a fresh one, or set the RD_TOKEN env var.",
     9:  "Real-Debrid denied the operation. Your account may be free-tier, locked, or this endpoint is restricted for your token.",
     14: "Your Real-Debrid account is locked. Contact RD support.",
     20: "Real-Debrid's chosen hoster is premium-only for your account. Upgrade or try a different torrent.",
@@ -850,7 +901,7 @@ def _rd_request(method, path, token, data=None):
     # Status-code fallbacks for cases where body is missing or has an unmapped code
     if s == 401:
         raise _RdError(
-            "Real-Debrid rejected the token. Run `torrent-hound --set-rd-token` to "
+            "Real-Debrid rejected the token. Run `torrent-hound --configure-rd` to "
             "enter a fresh one, or set the RD_TOKEN env var."
         )
     if s == 451:
@@ -1288,7 +1339,7 @@ def main():
     parser.add_argument('-q', '--quiet', help='Print output of search without any additional options', default=False, action='store_true')
     parser.add_argument('--json', help='Print results as JSON (implies --quiet)', default=False, action='store_true', dest='as_json')
     parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {__version__}')
-    parser.add_argument('--set-rd-token', help='Prompt for a Real-Debrid token and save it to config', default=False, action='store_true', dest='set_rd_token')
+    parser.add_argument('--configure-rd', help='Interactively set up Real-Debrid token and action', default=False, action='store_true', dest='configure_rd')
     parser.add_argument('--config-path', help='Print the resolved config file path and exit', default=False, action='store_true', dest='config_path')
     parser.add_argument('--user-status', help='Show RD account info (token validity, premium expiration, points) and exit', default=False, action='store_true', dest='user_status')
     parser.add_argument('--revoke-rd-token', help='Invalidate the current RD token on Real-Debrid and optionally remove it from config', default=False, action='store_true', dest='revoke_rd_token')
@@ -1297,8 +1348,8 @@ def main():
 
     if args.config_path:
         sys.exit(_print_config_path())
-    if args.set_rd_token:
-        sys.exit(_set_rd_token())
+    if args.configure_rd:
+        sys.exit(_configure_rd())
     if args.user_status:
         sys.exit(_user_status())
     if args.revoke_rd_token:

@@ -132,51 +132,147 @@ def test_save_config_preserves_existing_action(th, tmp_path):
     assert reloaded["real_debrid"]["action"] == "print"
 
 
-def test_set_rd_token_writes_token(th, tmp_path, capsys):
+def _reload(th, path):
+    with patch.object(th, "_config_path", lambda: path):
+        return th._load_config()
+
+
+def test_configure_rd_tty_writes_token_and_selected_action(th, tmp_path, capsys):
     path = tmp_path / "config.toml"
     with patch.object(th, "_config_path", lambda: path), \
-         patch.object(th, "_prompt_rd_token", return_value="my-token"):
-        rc = th._set_rd_token()
+         patch.object(th, "_prompt_rd_token", return_value="my-token"), \
+         patch.object(th.sys.stdin, "isatty", return_value=True), \
+         patch("builtins.input", return_value="4"):  # 4 = downie
+        rc = th._configure_rd()
     assert rc == 0
     out = capsys.readouterr().out
-    assert "token saved" in out.lower()
-    assert "my-token" not in out  # MUST not echo the token
-    with patch.object(th, "_config_path", lambda: path):
-        cfg = th._load_config()
+    assert "saved to" in out.lower()
+    assert "my-token" not in out  # never echo the token
+    cfg = _reload(th, path)
     assert cfg["real_debrid"]["token"] == "my-token"
+    assert cfg["real_debrid"]["action"] == "downie"
 
 
-def test_set_rd_token_preserves_existing_action(th, tmp_path):
+def test_configure_rd_empty_action_input_uses_default(th, tmp_path):
+    # Enter on the action prompt → use the pre-selected default (clipboard for fresh config)
+    path = tmp_path / "config.toml"
+    with patch.object(th, "_config_path", lambda: path), \
+         patch.object(th, "_prompt_rd_token", return_value="tok"), \
+         patch.object(th.sys.stdin, "isatty", return_value=True), \
+         patch("builtins.input", return_value=""):
+        rc = th._configure_rd()
+    assert rc == 0
+    assert _reload(th, path)["real_debrid"]["action"] == "clipboard"
+
+
+def test_configure_rd_existing_action_is_default(th, tmp_path):
+    # Existing config action=downie → the prompt pre-selects it → Enter keeps it
+    path = tmp_path / "config.toml"
+    path.write_text('[real_debrid]\naction = "downie"\n', encoding="utf-8")
+    with patch.object(th, "_config_path", lambda: path), \
+         patch.object(th, "_prompt_rd_token", return_value="tok"), \
+         patch.object(th.sys.stdin, "isatty", return_value=True), \
+         patch("builtins.input", return_value=""):
+        rc = th._configure_rd()
+    assert rc == 0
+    assert _reload(th, path)["real_debrid"]["action"] == "downie"
+
+
+def test_configure_rd_invalid_action_reprompts(th, tmp_path, capsys):
+    # Invalid input → re-prompt → valid
+    path = tmp_path / "config.toml"
+    with patch.object(th, "_config_path", lambda: path), \
+         patch.object(th, "_prompt_rd_token", return_value="tok"), \
+         patch.object(th.sys.stdin, "isatty", return_value=True), \
+         patch("builtins.input", side_effect=["99", "abc", "2"]):  # 2 = print
+        rc = th._configure_rd()
+    assert rc == 0
+    assert "Invalid selection" in capsys.readouterr().out
+    assert _reload(th, path)["real_debrid"]["action"] == "print"
+
+
+def test_configure_rd_piped_stdin_preserves_existing_action(th, tmp_path):
+    # Non-TTY (piped) → no action prompt; existing action preserved
     path = tmp_path / "config.toml"
     path.write_text('[real_debrid]\naction = "browser"\n', encoding="utf-8")
     with patch.object(th, "_config_path", lambda: path), \
-         patch.object(th, "_prompt_rd_token", return_value="tok"):
-        rc = th._set_rd_token()
+         patch.object(th, "_prompt_rd_token", return_value="piped-tok"), \
+         patch.object(th.sys.stdin, "isatty", return_value=False):
+        rc = th._configure_rd()
     assert rc == 0
-    with patch.object(th, "_config_path", lambda: path):
-        cfg = th._load_config()
-    assert cfg["real_debrid"]["token"] == "tok"
+    cfg = _reload(th, path)
+    assert cfg["real_debrid"]["token"] == "piped-tok"
     assert cfg["real_debrid"]["action"] == "browser"
 
 
-def test_set_rd_token_empty_aborts(th, tmp_path, capsys):
+def test_configure_rd_piped_stdin_no_existing_defaults_to_clipboard(th, tmp_path):
+    path = tmp_path / "config.toml"
+    with patch.object(th, "_config_path", lambda: path), \
+         patch.object(th, "_prompt_rd_token", return_value="tok"), \
+         patch.object(th.sys.stdin, "isatty", return_value=False):
+        rc = th._configure_rd()
+    assert rc == 0
+    assert _reload(th, path)["real_debrid"]["action"] == "clipboard"
+
+
+def test_configure_rd_empty_token_aborts(th, tmp_path, capsys):
     path = tmp_path / "config.toml"
     with patch.object(th, "_config_path", lambda: path), \
          patch.object(th, "_prompt_rd_token", return_value=""):
-        rc = th._set_rd_token()
+        rc = th._configure_rd()
     assert rc == 1
     assert "aborting" in capsys.readouterr().out.lower()
-    assert not path.exists()  # no file created on abort
+    assert not path.exists()
 
 
-def test_set_rd_token_write_failure(th, tmp_path, capsys):
+def test_configure_rd_write_failure_returns_nonzero(th, capsys):
     def fail_save(_):
         raise OSError("disk full")
     with patch.object(th, "_prompt_rd_token", return_value="tok"), \
-         patch.object(th, "_save_config", side_effect=fail_save):
-        rc = th._set_rd_token()
+         patch.object(th.sys.stdin, "isatty", return_value=False), \
+         patch.object(th, "_save_config", side_effect=fail_save), \
+         patch.object(th, "_load_config", return_value={}):
+        rc = th._configure_rd()
     assert rc == 1
     assert "failed to write" in capsys.readouterr().out.lower()
+
+
+def test_configure_rd_invalid_existing_action_falls_back_to_clipboard(th, tmp_path):
+    # If someone hand-edits the config with a bogus action, the prompt's default
+    # must still be sensible (clipboard) rather than pointing at the invalid value.
+    path = tmp_path / "config.toml"
+    path.write_text('[real_debrid]\naction = "bogus"\n', encoding="utf-8")
+    with patch.object(th, "_config_path", lambda: path), \
+         patch.object(th, "_prompt_rd_token", return_value="tok"), \
+         patch.object(th.sys.stdin, "isatty", return_value=False):
+        rc = th._configure_rd()
+    assert rc == 0
+    assert _reload(th, path)["real_debrid"]["action"] == "clipboard"
+
+
+# --- _prompt_rd_action ---
+
+@pytest.mark.parametrize("choice,expected", [
+    ("1", "clipboard"),
+    ("2", "print"),
+    ("3", "browser"),
+    ("4", "downie"),
+])
+def test_prompt_rd_action_numeric_selection(th, choice, expected):
+    with patch("builtins.input", return_value=choice):
+        assert th._prompt_rd_action(default="clipboard") == expected
+
+
+def test_prompt_rd_action_empty_returns_default(th):
+    with patch("builtins.input", return_value=""):
+        assert th._prompt_rd_action(default="downie") == "downie"
+
+
+def test_prompt_rd_action_invalid_reprompts_until_valid(th, capsys):
+    with patch("builtins.input", side_effect=["99", "0", "foo", "3"]):
+        result = th._prompt_rd_action(default="clipboard")
+    assert result == "browser"
+    assert capsys.readouterr().out.count("Invalid selection") == 3
 
 
 def test_print_config_path_prints_path(th, tmp_path, capsys):
