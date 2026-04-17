@@ -7,6 +7,24 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-04-17
+
+- Updating README and CHANGELOG for new r semantics
+- Making r REPL command cache-aware (cached sources reused, failed sources retry)
+- Mentioning cache behavior in h command help menu for s and r
+- Making r REPL command actually bypass the cache as documented
+- Making s REPL command cache-aware instead of always bypassing
+- Documenting result cache in README and CHANGELOG
+- Wiring result cache into searchAllSites with mixed-hit feedback
+- Adding result-cache module state and helpers (get, put, format-age, normalize)
+- Listing argcomplete in README runtime dependencies
+- Clarifying zsh compinit precondition in completion docs
+- Documenting shell completion in README and CHANGELOG
+- Wiring argcomplete into main() for top-level CLI flag completion
+- Extracting _build_ parser helper to isolate parser construction from main()
+- Adding argcomplete>=3.0 as a runtime dependency
+- Tidying 2.5.0 changelog
+
 ### Added
 - Shell completion for top-level CLI flags via `argcomplete`. Enable by
   adding a small snippet to `~/.bashrc` or `~/.zshrc` — see the README's
