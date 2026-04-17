@@ -56,6 +56,29 @@ cd torrent-hound
 pip install -e ".[dev]"             # installs deps + pytest + ruff
 ```
 
+### Shell completion
+
+Torrent Hound uses [`argcomplete`](https://github.com/kislyuk/argcomplete)
+for tab-completion of top-level flags. To enable, add one line to your
+shell config:
+
+**bash** (`~/.bashrc`):
+```bash
+eval "$(register-python-argcomplete torrent-hound)"
+```
+
+**zsh** (`~/.zshrc`):
+```zsh
+autoload -U bashcompinit && bashcompinit
+eval "$(register-python-argcomplete torrent-hound)"
+```
+
+Restart your shell, then `torrent-hound --<TAB>` cycles through flags.
+
+> **Note:** Completion only works when installed via `pip` / `pipx`. The
+> standalone binary from the GitHub Releases page doesn't expose the
+> Python entry point that `register-python-argcomplete` hooks into.
+
 ## Usage
 
 ```
