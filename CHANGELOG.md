@@ -8,9 +8,9 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
-- Shell completion for top-level CLI flags via `argcomplete`. Enable with
-  `eval "$(register-python-argcomplete torrent-hound)"` in `~/.bashrc`
-  or `~/.zshrc`. See README for details.
+- Shell completion for top-level CLI flags via `argcomplete`. Enable by
+  adding a small snippet to `~/.bashrc` or `~/.zshrc` — see the README's
+  "Shell completion" section for the exact commands per shell.
 
 ## [2.5.0] - 2026-04-17
 

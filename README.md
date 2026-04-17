@@ -69,6 +69,7 @@ eval "$(register-python-argcomplete torrent-hound)"
 
 **zsh** (`~/.zshrc`):
 ```zsh
+autoload -U compinit && compinit
 autoload -U bashcompinit && bashcompinit
 eval "$(register-python-argcomplete torrent-hound)"
 ```
