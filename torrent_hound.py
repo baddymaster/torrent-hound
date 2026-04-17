@@ -1331,9 +1331,7 @@ def printResultsQuietly(as_json=False):
     else:
         print(combined_json_results)
 
-def main():
-    global query, exit
-
+def _build_parser():
     parser = argparse.ArgumentParser(prog="torrent-hound")
     parser.add_argument("query", help="Specify the search query", nargs='*', default=[])
     parser.add_argument('-q', '--quiet', help='Print output of search without any additional options', default=False, action='store_true')
@@ -1343,7 +1341,13 @@ def main():
     parser.add_argument('--config-path', help='Print the resolved config file path and exit', default=False, action='store_true', dest='config_path')
     parser.add_argument('--user-status', help='Show RD account info (token validity, premium expiration, points) and exit', default=False, action='store_true', dest='user_status')
     parser.add_argument('--revoke-rd-token', help='Invalidate the current RD token on Real-Debrid and optionally remove it from config', default=False, action='store_true', dest='revoke_rd_token')
+    return parser
 
+
+def main():
+    global query, exit
+
+    parser = _build_parser()
     args = parser.parse_args()
 
     if args.config_path:
