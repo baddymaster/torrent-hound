@@ -180,6 +180,62 @@ def test_rd_request_500(th):
     assert "500" in str(exc.value)
 
 
+# --- error_code mapping (per RD docs) ------------------------------------
+
+@pytest.mark.parametrize("err_code,expected_substring", [
+    (8,  "rejected the token"),
+    (9,  "denied the operation"),
+    (14, "account is locked"),
+    (20, "premium-only"),
+    (21, "too many active torrents"),
+    (22, "IP address isn't whitelisted"),
+    (23, "fair-use quota exhausted"),
+    (34, "rate limit"),
+    (37, "endpoint is disabled"),
+])
+def test_rd_request_known_error_code_uses_specific_message(th, err_code, expected_substring):
+    # 403 is a typical wrapper for these — the mapping should win regardless of status
+    resp = _mk_response(403, json_body={"error": "rd msg", "error_code": err_code})
+    with patch.object(th.requests, "request", return_value=resp):
+        with pytest.raises(th._RdError) as exc:
+            th._rd_request("GET", "/x", token="t")
+    assert expected_substring in str(exc.value)
+
+
+def test_rd_request_unknown_error_code_falls_through_with_body_context(th):
+    # 99 isn't in our mapping, 400 has no specific status fallback yet
+    resp = _mk_response(400, json_body={"error": "bad thing", "error_code": 99})
+    with patch.object(th.requests, "request", return_value=resp):
+        with pytest.raises(th._RdError) as exc:
+            th._rd_request("GET", "/x", token="t")
+    msg = str(exc.value)
+    assert "400" in msg
+    assert "error_code=99" in msg
+    assert "bad thing" in msg
+
+
+def test_rd_request_error_code_preempts_status_fallback(th):
+    # Status 401 normally → "rejected the token", but error_code=14 means account locked.
+    # The body's specific code wins.
+    resp = _mk_response(401, json_body={"error": "locked", "error_code": 14})
+    with patch.object(th.requests, "request", return_value=resp):
+        with pytest.raises(th._RdError) as exc:
+            th._rd_request("GET", "/x", token="t")
+    assert "account is locked" in str(exc.value)
+    assert "rejected the token" not in str(exc.value)
+
+
+def test_rd_request_cdn_403_preempts_error_code(th):
+    # If response has Cloudflare markers, the body is HTML junk — error_code parsing
+    # would fail/lie. CDN check must run before body parsing.
+    resp = _mk_response(403, headers={"cf-ray": "abc"}, json_body={"error_code": 22})
+    with patch.object(th.requests, "request", return_value=resp):
+        with pytest.raises(th._RdError) as exc:
+            th._rd_request("GET", "/x", token="t")
+    assert "block page" in str(exc.value)
+    assert "IP address" not in str(exc.value)  # not the error_code-22 message
+
+
 def test_rd_request_happy_path_returns_json(th):
     resp = _mk_response(200, json_body={"ok": True})
     with patch.object(th.requests, "request", return_value=resp) as m:

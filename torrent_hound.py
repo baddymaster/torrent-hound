@@ -672,6 +672,37 @@ def _rd_has_cdn_markers(headers):
     return server.lower().startswith("cloudflare")
 
 
+# Documented RD numeric error_codes (see https://api.real-debrid.com/). RD always
+# returns these in the response body alongside any non-2xx status. Mapping to a
+# user-facing message lets us distinguish "your account is locked" from "your IP
+# isn't whitelisted" — both 403s but completely different remediations.
+_RD_ERROR_MESSAGES = {
+    8:  "Real-Debrid rejected the token. Run `torrent-hound --set-rd-token` to enter a fresh one, or set the RD_TOKEN env var.",
+    9:  "Real-Debrid denied the operation. Your account may be free-tier, locked, or this endpoint is restricted for your token.",
+    14: "Your Real-Debrid account is locked. Contact RD support.",
+    20: "Real-Debrid's chosen hoster is premium-only for your account. Upgrade or try a different torrent.",
+    21: "Real-Debrid says you have too many active torrents. Wait for some to finish or delete them at https://real-debrid.com/torrents.",
+    22: "Your current IP address isn't whitelisted on your RD account. Manage IP restrictions at https://real-debrid.com/account.",
+    23: "Real-Debrid fair-use quota exhausted. Quota resets daily; see https://real-debrid.com/user.",
+    34: "Real-Debrid rate limit hit (250 req/min). Wait a minute and retry.",
+    37: "This Real-Debrid endpoint is disabled for your account. Contact RD support.",
+}
+
+
+def _rd_parse_error_body(resp):
+    """Best-effort extract (error_code, error_message) from a RD error response.
+
+    Returns (None, None) when the body is missing, non-JSON, or not a dict.
+    """
+    try:
+        body = resp.json()
+    except ValueError:
+        return (None, None)
+    if not isinstance(body, dict):
+        return (None, None)
+    return (body.get("error_code"), body.get("error"))
+
+
 def _rd_request(method, path, token, data=None):
     """Call RD. Returns parsed JSON dict, or None for 204. Raises _RdError."""
     url = _RD_API + path
@@ -711,22 +742,34 @@ def _rd_request(method, path, token, data=None):
                 "Real-Debrid returned a non-JSON response. Likely a captive portal "
                 "or proxy; check your connection."
             ) from None
-    if s == 401:
-        raise _RdError(
-            "Real-Debrid rejected the token. Check RD_TOKEN or "
-            "[real_debrid].token — run `torrent-hound --config-path` to find the file."
-        )
-    if s == 451:
-        raise _RdError("Real-Debrid is geo-blocked on this connection (HTTP 451). Try a VPN.")
+    # CDN/proxy 403 first — body is HTML not JSON, so error_code parsing won't help
     if s == 403 and _rd_has_cdn_markers(resp.headers):
         raise _RdError(
             "Real-Debrid reachable but returning a block page — likely CDN "
             "or ISP intermediary. Try a VPN."
         )
+
+    # Prefer specific message keyed off RD's documented error_code in the body
+    err_code, err_msg = _rd_parse_error_body(resp)
+    if err_code in _RD_ERROR_MESSAGES:
+        raise _RdError(_RD_ERROR_MESSAGES[err_code])
+
+    # Status-code fallbacks for cases where body is missing or has an unmapped code
+    if s == 401:
+        raise _RdError(
+            "Real-Debrid rejected the token. Run `torrent-hound --set-rd-token` to "
+            "enter a fresh one, or set the RD_TOKEN env var."
+        )
+    if s == 451:
+        raise _RdError("Real-Debrid is geo-blocked on this connection (HTTP 451). Try a VPN.")
     if s == 403:
         raise _RdError("Real-Debrid refused the request (403). Likely account/quota issue.")
     if s == 429:
         raise _RdError("Real-Debrid rate limit hit. Wait a minute and retry.")
+
+    # Generic — surface body context if RD gave us anything to work with
+    if err_code is not None or err_msg:
+        raise _RdError(f"Real-Debrid error {s} (error_code={err_code}): {err_msg or 'no message'}.")
     raise _RdError(f"Real-Debrid error {s}. Try again.")
 
 
