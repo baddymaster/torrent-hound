@@ -4,6 +4,8 @@
 #
 #    pip-compile --output-file=requirements.lock --strip-extras pyproject.toml
 #
+argcomplete==3.6.3
+    # via torrent-hound (pyproject.toml)
 beautifulsoup4==4.14.3
     # via torrent-hound (pyproject.toml)
 certifi==2026.2.25
