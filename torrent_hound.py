@@ -1284,6 +1284,24 @@ def _format_age(seconds: float) -> str:
     return f"{int(seconds // 60)}m"
 
 
+def _print_cache_feedback(cache_hits: dict, miss_names: list, quiet_mode: bool) -> None:
+    """Print the user-visible feedback line describing cache hits/misses.
+    Suppressed in --quiet / --json modes. Handles the all-hit and mixed
+    branches; the all-miss branch is handled by the fetch phase's original
+    'Searching ...' message (this function is a no-op when there are no hits)."""
+    if quiet_mode or not cache_hits:
+        return
+    max_age = _format_age(max(cache_hits.values()))
+    if not miss_names:
+        # All sources cached.
+        print(colored.magenta(f"Using cached results ({max_age} old). 'r' to refresh."))
+    else:
+        # Mixed: some hits, some misses. Fetch phase will follow with 'Done.'.
+        hit_list = ", ".join(cache_hits.keys())
+        miss_list = ", ".join(miss_names)
+        print(colored.magenta(f"Searching {miss_list}... ({hit_list} cached, {max_age} old)\n"), end='')
+
+
 # Registry of active torrent sources. Each entry is (display_name, callable).
 # The callable takes (query, quiet_mode) and returns a list of result dicts.
 # To re-enable 1337x: uncomment its entry (and see search1337x for CF caveats).
@@ -1307,17 +1325,41 @@ def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
     # RARBG and SkyTorrents permanently removed. See git history.
     results_rarbg = []
 
-    if not quiet_mode:
-        names = ", ".join(name for name, _ in _SOURCES)
-        print(colored.magenta(f"Searching {names}...\n"), end='')
+    # Cache read phase: resolve each source from cache if fresh; else queue for fetch.
+    source_results: dict = {}
+    misses: list = []
+    cache_hits: dict = {}  # source_name → age_in_seconds (for feedback)
 
-    # Fan out all source searches in parallel.
-    with ThreadPoolExecutor(max_workers=max(1, len(_SOURCES))) as pool:
-        futures = {name: pool.submit(fn, query, quiet_mode) for name, fn in _SOURCES}
-        source_results = {name: (fut.result() or []) for name, fut in futures.items()}
+    if not force_search:
+        for name, fn in _SOURCES:
+            cached = _cache_get(query, name)
+            if cached is not None:
+                fetched_at = _RESULT_CACHE[(_normalize_query(query), name)][0]
+                cache_hits[name] = time.monotonic() - fetched_at
+                source_results[name] = cached
+            else:
+                misses.append((name, fn))
+    else:
+        misses = list(_SOURCES)
 
-    if not quiet_mode:
-        print(colored.green("Done."))
+    _print_cache_feedback(cache_hits, [name for name, _ in misses], quiet_mode)
+
+    # Fetch phase: only sources that missed.
+    if misses:
+        if not quiet_mode and not cache_hits:
+            # All-miss case — emit the original "Searching ..." message.
+            miss_names = ", ".join(name for name, _ in misses)
+            print(colored.magenta(f"Searching {miss_names}...\n"), end='')
+
+        with ThreadPoolExecutor(max_workers=max(1, len(misses))) as pool:
+            futures = {name: pool.submit(fn, query, quiet_mode) for name, fn in misses}
+            for name, fut in futures.items():
+                result = fut.result() or []
+                source_results[name] = result
+                _cache_put(query, name, result)
+
+        if not quiet_mode:
+            print(colored.green("Done."))
 
     results_tpb_condensed = source_results.get('TPB', [])
     results_yts = source_results.get('YTS', [])
