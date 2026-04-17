@@ -8,16 +8,40 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
-- Real-Debrid integration via `rd<n>` command (cached-check, interactive multi-file picker, configurable action: clipboard/print/browser/downie)
-- TOML config file at `~/.config/torrent-hound/config.toml` (first time the project has one)
-- `RD_TOKEN` env var for ad-hoc use without editing the config file
-- `--set-rd-token` CLI flag for secure interactive token entry (no shell history exposure)
-- `--config-path` CLI flag to print the resolved config file path
+- Real-Debrid integration via `rd<n>` command — submits the selected torrent to RD, waits for hoster links, and dispatches to a configurable action
+- Four action modes: `clipboard` (default), `print`, `browser`, `downie` (via `downie://XUL/?url=` URL scheme on macOS)
+- Interactive multi-file picker for season packs and multi-part torrents
+- TOML config file at `~/Library/Application Support/torrent-hound/config.toml` (macOS) / `~/.config/torrent-hound/config.toml` (Linux) / `%APPDATA%\torrent-hound\config.toml` (Windows) — first time the project has one
+- `RD_TOKEN` env var support for ad-hoc use without saving anything to disk
+- `--configure-rd` CLI flag for one-step interactive token + action setup (getpass hidden entry; stdin-pipe supported for scripting)
+- `--config-path` CLI flag — prints the resolved config file path
+- `--user-status` CLI flag — prints account type, premium expiration, and points via `GET /user`
+- `--revoke-rd-token` CLI flag — invalidates the current token via `GET /disable_access_token`, optionally wipes it from config
+- RD error classification surfaces documented `error_code` values (8, 9, 14, 20, 21, 22, 23, 34, 37) with specific user-facing messages per code; generic fallback includes body context for unrecognised codes
+- Graceful degradation when RD disables the undocumented `/torrents/instantAvailability` endpoint for an account (error_code 37 or 3 are swallowed; `rd<n>` converges through the submit + unrestrict flow)
+- Already-selected detection on re-runs (skips redundant `selectFiles` after RD returns 202 "Action already done")
+- Single 60-second retry on HTTP 429 rate-limit responses (per RD docs, no multi-retry to avoid extending the block duration)
+- `config.toml` added to `.gitignore` so tokens can't accidentally land in git history
+
+### Security
+- Config file written with `0600` permissions and parent directory with `0700` (re-applied on overwrite to harden any pre-existing loose modes)
+- URL-scheme allowlist on direct links from RD before `webbrowser.open()` / Downie dispatch — only `https://` is accepted; `file://`, `javascript:`, `tel:`, and custom schemes are filtered out as defence against a hostile or MITM'd RD response
+- ANSI escape stripping on torrent names and filenames in the file picker to prevent terminal-UI spoofing from malicious torrent metadata
+- Unicode decimal digits rejected in the picker's selection parser (ASCII-only enforcement)
+- Token never echoed by `--configure-rd` or confirmation messages; 401 error no longer leaks `$HOME` path
+
+### Fixed
+- `nargs='*'` on the query argument no longer iterates the string default when no args are given
+- HTTP 202 from `selectFiles` treated as idempotent success (fixes misleading "captive portal" error on re-runs)
+- HTTP 201 from `addMagnet` recognised as success (was erroneously tripping the generic error path in early prototypes)
+- `_cmd_rd` catches `KeyError`/`TypeError` from unexpected RD response shapes instead of crashing the REPL
+- `_rd_request` catches `ValueError` on non-JSON 200 responses (captive portals) and surfaces a friendly message
+- `_load_config` catches `UnicodeDecodeError` on non-UTF-8 config files
 
 ### Dependencies
-- Added `platformdirs>=4.0` (config directory resolution)
-- Added `tomli>=2.0; python_version<'3.11'` (TOML backport for Python 3.9/3.10)
-- Added `tomli_w>=1.0` (TOML writer for the `--set-rd-token` flow; stdlib `tomllib` is read-only)
+- Added `platformdirs>=4.0` (cross-platform config directory resolution)
+- Added `tomli>=2.0; python_version<'3.11'` (TOML reader backport; stdlib `tomllib` covers 3.11+)
+- Added `tomli_w>=1.0` (TOML writer for `--configure-rd`; stdlib `tomllib` is read-only)
 
 ## [2.4.2] - 2026-04-16
 
