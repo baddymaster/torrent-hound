@@ -41,6 +41,7 @@ else:
     import tomli as tomllib  # backport; same API surface we use
 
 import argcomplete
+from argcomplete.shell_integration import shellcode as _argcomplete_shellcode
 import platformdirs
 import pyperclip
 import requests
@@ -1429,6 +1430,7 @@ def _build_parser():
     parser.add_argument('--config-path', help='Print the resolved config file path and exit', default=False, action='store_true', dest='config_path')
     parser.add_argument('--user-status', help='Show RD account info (token validity, premium expiration, points) and exit', default=False, action='store_true', dest='user_status')
     parser.add_argument('--revoke-rd-token', help='Invalidate the current RD token on Real-Debrid and optionally remove it from config', default=False, action='store_true', dest='revoke_rd_token')
+    parser.add_argument('--print-completion', help='Print shell completion code for the given shell (bash or zsh) and exit', choices=['bash', 'zsh'], default=None, dest='print_completion')
     return parser
 
 
@@ -1439,6 +1441,9 @@ def main():
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
+    if args.print_completion:
+        print(_argcomplete_shellcode(['torrent-hound'], shell=args.print_completion))
+        sys.exit(0)
     if args.config_path:
         sys.exit(_print_config_path())
     if args.configure_rd:

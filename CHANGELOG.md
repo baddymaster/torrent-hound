@@ -7,6 +7,13 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Shell completion setup now uses `torrent-hound --print-completion {bash,zsh}`
+  instead of `register-python-argcomplete torrent-hound`. The latter ships
+  inside the argcomplete dependency and isn't exposed on PATH when installed
+  via pipx, forcing users to `pipx inject` argcomplete separately. Routing
+  the snippet through torrent-hound's own CLI sidesteps that entirely.
+
 ## [2.6.0] - 2026-04-17
 
 - Updating README and CHANGELOG for new r semantics
