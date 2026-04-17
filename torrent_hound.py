@@ -30,6 +30,7 @@ import time
 import urllib.parse
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 
 if sys.version_info >= (3, 11):
@@ -155,6 +156,40 @@ def _set_rd_token():
 
 def _print_config_path():
     print(_config_path())
+    return 0
+
+
+def _user_status():
+    """Print a terse RD account summary via GET /user. Exit 0 on success, 1 on error."""
+    config = _load_config()
+    token = _resolve_rd_token(config)
+    if not token:
+        print(
+            "Real-Debrid token not configured. Set RD_TOKEN env var or run "
+            "torrent-hound --set-rd-token."
+        )
+        return 1
+    try:
+        user = _rd_request("GET", "/user", token=token)
+    except _RdError as e:
+        print(str(e))
+        return 1
+
+    expiration = user.get("expiration", "") or ""
+    days_msg = ""
+    if expiration:
+        try:
+            exp_dt = datetime.fromisoformat(expiration.replace("Z", "+00:00"))
+            delta = exp_dt - datetime.now(timezone.utc)
+            days_msg = f" ({delta.days} days remaining)" if delta.total_seconds() > 0 else " (expired)"
+        except ValueError:
+            pass
+
+    print("Real-Debrid account")
+    print(f"  Username      : {user.get('username', '?')}")
+    print(f"  Type          : {user.get('type', '?')}")
+    print(f"  Premium until : {expiration or '(none)'}{days_msg}")
+    print(f"  Points        : {user.get('points', '?')}")
     return 0
 
 
@@ -1178,6 +1213,7 @@ def main():
     parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {__version__}')
     parser.add_argument('--set-rd-token', help='Prompt for a Real-Debrid token and save it to config', default=False, action='store_true', dest='set_rd_token')
     parser.add_argument('--config-path', help='Print the resolved config file path and exit', default=False, action='store_true', dest='config_path')
+    parser.add_argument('--user-status', help='Show RD account info (token validity, premium expiration, points) and exit', default=False, action='store_true', dest='user_status')
 
     args = parser.parse_args()
 
@@ -1185,6 +1221,8 @@ def main():
         sys.exit(_print_config_path())
     if args.set_rd_token:
         sys.exit(_set_rd_token())
+    if args.user_status:
+        sys.exit(_user_status())
 
     if args.query:
         query = ' '.join(args.query)

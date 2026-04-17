@@ -187,6 +187,59 @@ def test_print_config_path_prints_path(th, tmp_path, capsys):
     assert str(fake) in capsys.readouterr().out
 
 
+def test_user_status_no_token(th, capsys, monkeypatch):
+    monkeypatch.delenv("RD_TOKEN", raising=False)
+    with patch.object(th, "_load_config", return_value={}):
+        rc = th._user_status()
+    assert rc == 1
+    assert "token not configured" in capsys.readouterr().out
+
+
+def test_user_status_success_premium(th, capsys, monkeypatch):
+    monkeypatch.setenv("RD_TOKEN", "tok")
+    user_payload = {
+        "username": "testuser",
+        "type": "premium",
+        "premium": 60 * 60 * 24 * 100,
+        "expiration": "2099-01-01T00:00:00.000Z",
+        "points": 500,
+    }
+    with patch.object(th, "_load_config", return_value={}), \
+         patch.object(th, "_rd_request", return_value=user_payload):
+        rc = th._user_status()
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "testuser" in out
+    assert "premium" in out
+    assert "500" in out
+    assert "days remaining" in out
+
+
+def test_user_status_expired_premium(th, capsys, monkeypatch):
+    monkeypatch.setenv("RD_TOKEN", "tok")
+    user_payload = {
+        "username": "u",
+        "type": "free",
+        "premium": 0,
+        "expiration": "2020-01-01T00:00:00.000Z",
+        "points": 0,
+    }
+    with patch.object(th, "_load_config", return_value={}), \
+         patch.object(th, "_rd_request", return_value=user_payload):
+        rc = th._user_status()
+    assert rc == 0
+    assert "expired" in capsys.readouterr().out
+
+
+def test_user_status_rd_error_returns_nonzero(th, capsys, monkeypatch):
+    monkeypatch.setenv("RD_TOKEN", "tok")
+    with patch.object(th, "_load_config", return_value={}), \
+         patch.object(th, "_rd_request", side_effect=th._RdError("bad token msg")):
+        rc = th._user_status()
+    assert rc == 1
+    assert "bad token msg" in capsys.readouterr().out
+
+
 def test_prompt_rd_token_tty_uses_getpass(th):
     with patch.object(th.sys.stdin, "isatty", return_value=True), \
          patch.object(th.getpass, "getpass", return_value="tty-token") as m_gp:
