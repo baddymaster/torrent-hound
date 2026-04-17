@@ -41,11 +41,11 @@ else:
     import tomli as tomllib  # backport; same API surface we use
 
 import argcomplete
-from argcomplete.shell_integration import shellcode as _argcomplete_shellcode
 import platformdirs
 import pyperclip
 import requests
 import tomli_w
+from argcomplete.shell_integration import shellcode as _argcomplete_shellcode
 from bs4 import BeautifulSoup
 from rich.console import Console
 from rich.table import Table
