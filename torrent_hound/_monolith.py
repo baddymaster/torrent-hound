@@ -33,7 +33,6 @@ import webbrowser
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -49,6 +48,17 @@ from argcomplete.shell_integration import shellcode as _argcomplete_shellcode
 from bs4 import BeautifulSoup
 from rich.console import Console
 from rich.table import Table
+
+# Re-import extracted-package names so callers inside this module (still the
+# bulk of the codebase during the migration) can reference them unqualified.
+# Each subsequent commit of the package split adds another line here.
+from torrent_hound.cache import (  # noqa: E402
+    _RESULT_CACHE,
+    _cache_get,
+    _cache_put,
+    _normalize_query,
+    _print_cache_feedback,
+)
 
 try:
     from importlib.metadata import version as _pkg_version
@@ -290,11 +300,6 @@ num_results = 0
 tpb_working_domain = 'thepiratebay.zone'
 tpb_url, yts_url, eztv_url, url_1337x = '', '', '', ''
 
-# Per-session result cache. Populated by searchAllSites on successful fetches,
-# checked on subsequent calls. Key: (normalized_query, source_name).
-# Value: (fetched_at_monotonic, results_list). TTL is enforced at read time.
-_RESULT_CACHE: dict[tuple[str, str], tuple[float, list[dict]]] = {}
-_CACHE_TTL_SECONDS = 300  # 5 minutes
 
 def extract_magnet_link_1337x(url):
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
@@ -1247,61 +1252,6 @@ def print_menu(arg=0):
         print('''
         Enter 'q' to exit and 'h' to see all available commands.
         ''')
-
-def _normalize_query(q: str) -> str:
-    """Collapse whitespace differences and case so 'Ubuntu ' and 'ubuntu'
-    hit the same cache entry."""
-    return q.strip().lower()
-
-
-def _cache_get(query: str, source: str) -> Optional[list[dict]]:
-    """Return cached results if fresh; None if absent or expired.
-    Uses time.monotonic() to be immune to wall-clock changes (NTP slew,
-    DST, suspend/resume)."""
-    key = (_normalize_query(query), source)
-    entry = _RESULT_CACHE.get(key)
-    if entry is None:
-        return None
-    fetched_at, results = entry
-    if time.monotonic() - fetched_at >= _CACHE_TTL_SECONDS:
-        return None
-    return results
-
-
-def _cache_put(query: str, source: str, results: list[dict]) -> None:
-    """Store results in the cache. No-op if results is empty — we don't
-    want to freeze a transient source error (which surfaces as []) into
-    a 5-minute cached-empty state."""
-    if not results:
-        return
-    _RESULT_CACHE[(_normalize_query(query), source)] = (time.monotonic(), results)
-
-
-def _format_age(seconds: float) -> str:
-    """Human-readable age. <60s → '45s', ≥60s → '2m'. TTL caps max
-    displayable age at 4m, so no hours/days case is needed."""
-    if seconds < 60:
-        return f"{int(seconds)}s"
-    return f"{int(seconds // 60)}m"
-
-
-def _print_cache_feedback(cache_hits: dict, miss_names: list, quiet_mode: bool) -> None:
-    """Print the user-visible feedback line describing cache hits/misses.
-    Suppressed in --quiet / --json modes. Handles the all-hit and mixed
-    branches; the all-miss branch is handled by the fetch phase's original
-    'Searching ...' message (this function is a no-op when there are no hits)."""
-    if quiet_mode or not cache_hits:
-        return
-    max_age = _format_age(max(cache_hits.values()))
-    if not miss_names:
-        # All sources cached.
-        print(colored.magenta(f"Using cached results ({max_age} old)."))
-    else:
-        # Mixed: some hits, some misses. Fetch phase will follow with 'Done.'.
-        hit_list = ", ".join(cache_hits.keys())
-        miss_list = ", ".join(miss_names)
-        print(colored.magenta(f"Searching {miss_list}... ({hit_list} cached, {max_age} old)\n"), end='')
-
 
 # Registry of active torrent sources. Each entry is (display_name, callable).
 # The callable takes (query, quiet_mode) and returns a list of result dicts.
