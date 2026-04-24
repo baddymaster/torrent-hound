@@ -35,6 +35,9 @@ dev = ["pytest", "ruff", "pip-tools"]
 [project.scripts]
 torrent-hound = "torrent_hound:main"
 
+[tool.setuptools.packages.find]
+include = ["torrent_hound*"]
+
 [tool.ruff]
 target-version = "py39"
 line-length = 120

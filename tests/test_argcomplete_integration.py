@@ -35,14 +35,15 @@ def test_build_parser_parses_known_flags(th):
 
 def test_marker_comment_present_near_top():
     """argcomplete requires the # PYTHON_ARGCOMPLETE_OK marker within the first
-    ~1024 bytes of the script. Conventional placement is line 2, right after
-    the shebang. If the marker is missing or pushed past the scan window,
-    shell completion silently stops working.
+    ~1024 bytes of the script it loads. For the package, that's __init__.py
+    — which is what `import torrent_hound` resolves to. If the marker is
+    missing or pushed past the scan window, shell completion silently stops
+    working.
     """
-    source = Path(__file__).parent.parent / "torrent_hound.py"
+    source = Path(__file__).parent.parent / "torrent_hound" / "__init__.py"
     head = source.read_bytes()[:1024]
     assert b"# PYTHON_ARGCOMPLETE_OK" in head, (
-        "argcomplete marker missing from the first 1024 bytes of torrent_hound.py"
+        "argcomplete marker missing from the first 1024 bytes of torrent_hound/__init__.py"
     )
 
 
