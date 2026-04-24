@@ -32,7 +32,7 @@ def mock_sources(th, monkeypatch):
     tpb_mock = MagicMock(return_value=[{"name": "tpb-result", "size": "1G"}])
     yts_mock = MagicMock(return_value=[{"name": "yts-result", "size": "500M"}])
     eztv_mock = MagicMock(return_value=[{"name": "eztv-result", "size": "200M"}])
-    monkeypatch.setattr(th, "_SOURCES", [
+    monkeypatch.setattr(th.sources, "_SOURCES", [
         ("TPB", tpb_mock),
         ("YTS", yts_mock),
         ("EZTV", eztv_mock),
@@ -111,7 +111,7 @@ def test_empty_results_not_cached(th, monkeypatch):
     tpb_mock = MagicMock(return_value=[])
     yts_mock = MagicMock(return_value=[])
     eztv_mock = MagicMock(return_value=[])
-    monkeypatch.setattr(th, "_SOURCES", [
+    monkeypatch.setattr(th.sources, "_SOURCES", [
         ("TPB", tpb_mock),
         ("YTS", yts_mock),
         ("EZTV", eztv_mock),

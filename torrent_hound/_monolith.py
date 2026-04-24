@@ -20,15 +20,17 @@
 #     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import argparse
+import base64  # noqa: F401  — kept for tests that patch th.base64
 import getpass  # noqa: F401  — kept for tests that patch th.getpass
 import json
 import os  # noqa: F401  — kept for tests that patch th.os
 import re
+import socket  # noqa: F401  — kept for tests that patch th.socket
 import sys
-import time
-import urllib.parse
+import time  # noqa: F401  — kept for tests that patch th.time
+import urllib.parse  # noqa: F401  — kept for tests that patch th.urllib
 import webbrowser
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor  # noqa: F401
 from datetime import datetime, timezone  # noqa: F401
 from pathlib import Path  # noqa: F401
 
@@ -40,20 +42,22 @@ else:
 import argcomplete
 import platformdirs  # noqa: F401
 import pyperclip
-import requests
+import requests  # noqa: F401  — kept for tests that patch th.requests
 import tomli_w  # noqa: F401
 from argcomplete.shell_integration import shellcode as _argcomplete_shellcode
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup  # noqa: F401
 from rich.console import Console
 from rich.table import Table
 
 # Re-import extracted-package names so callers inside this module (still the
 # bulk of the codebase during the migration) can reference them unqualified.
 # Each subsequent commit of the package split adds another line here.
-from torrent_hound.cache import (  # noqa: E402
+from torrent_hound.cache import (  # noqa: E402, F401
+    _CACHE_TTL_SECONDS,
     _RESULT_CACHE,
     _cache_get,
     _cache_put,
+    _format_age,
     _normalize_query,
     _print_cache_feedback,
 )
@@ -94,6 +98,33 @@ from torrent_hound.realdebrid import (  # noqa: E402, F401
     _RdError,
     _strip_ansi,
 )
+from torrent_hound.sources import _SOURCES, searchAllSites  # noqa: E402, F401
+from torrent_hound.sources.base import _format_bytes, removeAndReplaceSpaces  # noqa: E402, F401
+from torrent_hound.sources.eztv import (  # noqa: E402, F401
+    EZTV_DOMAINS,
+    _eztv_slug,
+    _imdb_lookup,
+    _parse_episode_query,
+    _parse_eztv_json,
+    searchEZTV,
+)
+from torrent_hound.sources.legacy_1337x import (  # noqa: E402, F401
+    extract_magnet_link_1337x,
+    pretty_print_top_results_1337x,
+    search1337x,
+)
+from torrent_hound.sources.tpb import (  # noqa: E402, F401
+    TPB_DOMAINS,
+    _parse_tpb_html,
+    searchPirateBayCondensed,
+)
+from torrent_hound.sources.yts import (  # noqa: E402, F401
+    YTS_DOMAINS,
+    YTS_TRACKERS,
+    _build_yts_magnet,
+    _parse_yts_json,
+    searchYTS,
+)
 
 try:
     from importlib.metadata import version as _pkg_version
@@ -131,373 +162,6 @@ tpb_working_domain = 'thepiratebay.zone'
 tpb_url, yts_url, eztv_url, url_1337x = '', '', '', ''
 
 
-def extract_magnet_link_1337x(url):
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.content, 'html.parser')
-    magnet_link = soup.find('a', href=lambda href: href and href.startswith("magnet:"))
-    if magnet_link:
-        return magnet_link['href']
-    else:
-        return None
-
-def search1337x(search_string=defaultQuery, domain='1337x.to', quiet_mode=False, limit=10):
-    global results_1337x, url_1337x
-
-    query = removeAndReplaceSpaces(search_string)
-    page_no = 1
-    baseURL = f'https://{domain}'
-    url = f'{baseURL}/search/{query}/{page_no}/'
-    url_1337x = url
-
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
-    response = requests.get(url, headers=headers)
-    results_1337x = []
-
-    if response.status_code == 403 and response.headers.get('cf-mitigated', '').lower() == 'challenge':
-        if not quiet_mode:
-            print(colored.magenta("[1337x] Error : Blocked by Cloudflare captcha"))
-        return results_1337x
-
-    soup = BeautifulSoup(response.text, 'html.parser')
-
-    try:
-        table = soup.find('table', {'class': 'table-list'})
-        rows = table.tbody.find_all('tr')
-        for row in rows[:limit]:
-            row_data = {}
-            name_col = row.find('td', {'class': 'coll-1 name'})
-            row_data['name'] = name_col.a.next_sibling.text
-            row_data['link'] = baseURL + name_col.a.next_sibling['href']
-            row_data['seeders'] = int(row.find('td', {'class': 'coll-2 seeds'}).text.strip())
-            row_data['leechers'] = int(row.find('td', {'class': 'coll-3 leeches'}).text.strip())
-            try:
-                row_data['ratio'] = format( (float(row_data['seeders'])/float(row_data['leechers'])), '.1f' )
-            except ZeroDivisionError:
-                row_data['ratio'] = 'inf'
-            row_data['time'] = row.find('td', {'class': 'coll-date'}).text.strip()
-            size_col = row.find('td', {'class': 'coll-4'})
-            if size_col:
-                row_data['size'] = size_col.contents[0].strip()
-            else:
-                row_data['size'] = ''
-            # uploader_col = row.find('td', {'class': 'coll-5'})
-            # if uploader_col:
-            #     row_data['uploader'] = uploader_col.contents[0].text.strip()
-            # else:
-            #     row_data['uploader'] = ''
-            row_data['magnet'] = extract_magnet_link_1337x(row_data['link'])
-            results_1337x.append(row_data)
-    except AttributeError:
-        if not quiet_mode:
-            print(colored.magenta("[1337x] Error : No results found"))
-    return results_1337x
-
-def pretty_print_top_results_1337x(limit=10):
-    global results_1337x, num_results
-    table, count = _build_results_table(results_1337x, "1337x", start_index=num_results + 1, limit=limit)
-    console.print(table)
-    return num_results + count
-
-def removeAndReplaceSpaces(string):
-    if string[0] == " ":
-        string = string[1:]
-    return string.replace(" ", "+")
-
-# TPB domains tried in order. Mirrors churn often; add new ones to the front
-# when they come up, drop dead ones from the tail.
-TPB_DOMAINS = [
-    'thepiratebay.zone',
-    'thepiratebay.org',
-    'tpb.party',
-    'piratebay.party',
-    'pirateproxy.live',
-]
-
-def _parse_tpb_html(html, domain='thepiratebay.zone', limit=10):
-    """Parse a TPB search-results HTML document. Returns [] if the expected
-    results table isn't present (domain is dead / blocked / CAPTCHA)."""
-    soup = BeautifulSoup(html, 'html.parser')
-    table = soup.find("table", {"id": "searchResult"})
-    if table is None:
-        return []
-    trs = table.find_all("tr")[1:]  # drop header row
-    parsed = []
-    base = f'https://{domain}'
-    for tr in trs[:limit]:
-        tds = tr.find_all("td")
-        try:
-            link_name = tds[1].find("a", {"class": "detLink"})
-            href = link_name["href"]
-            link = href if href.startswith("http") else f"{base}{href}"
-            res = {
-                'name': link_name.contents[0].strip(),
-                'link': link,
-                'seeders': int(tds[2].contents[0]),
-                'leechers': int(tds[3].contents[0]),
-                'magnet': tds[1].find("img", {"alt": "Magnet link"}).parent['href'],
-                'size': str(tds[1].find("font").contents[0].split(',')[1].split(' ')[2].replace('\xa0', ' ')),
-            }
-            try:
-                res['ratio'] = format(float(res['seeders']) / float(res['leechers']), '.1f')
-            except ZeroDivisionError:
-                res['ratio'] = 'inf'
-            parsed.append(res)
-        except (AttributeError, IndexError, KeyError):
-            continue  # malformed row; skip
-    return parsed
-
-def searchPirateBayCondensed(search_string=defaultQuery, quiet_mode=False, limit=10, timeout=8):
-    """Search TPB, trying known mirrors in order until one returns results.
-    On success, remembers the working domain for subsequent calls in this run."""
-    global tpb_working_domain, tpb_url, results_tpb_condensed
-
-    # Try last-known-good domain first, then the rest
-    domains_to_try = [tpb_working_domain] + [d for d in TPB_DOMAINS if d != tpb_working_domain]
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
-
-    for domain in domains_to_try:
-        url = f'https://{domain}/s/?q={removeAndReplaceSpaces(search_string)}&page=0&orderby=99'
-        try:
-            r = requests.get(url, headers=headers, timeout=timeout)
-            parsed = _parse_tpb_html(r.content, domain=domain, limit=limit)
-            if parsed:
-                tpb_working_domain = domain
-                tpb_url = url
-                results_tpb_condensed = parsed
-                return parsed
-        except requests.RequestException:
-            continue  # try next mirror
-
-    if not quiet_mode:
-        print(colored.magenta("[PirateBay] Error : All known mirrors returned no results or were unreachable"))
-    results_tpb_condensed = []
-    return results_tpb_condensed
-
-# ---------------------------------------------------------------------------
-# YTS (movies only, JSON API, no scraping)
-# ---------------------------------------------------------------------------
-YTS_DOMAINS = ['yts.lt', 'yts.am', 'yts.mx', 'yts.rs']
-
-YTS_TRACKERS = [
-    "udp://open.demonii.com:1337/announce",
-    "udp://tracker.opentrackr.org:1337/announce",
-    "udp://tracker.torrent.eu.org:451/announce",
-    "udp://tracker.dler.org:6969/announce",
-    "udp://open.stealth.si:80/announce",
-]
-
-def _build_yts_magnet(info_hash, title):
-    dn = urllib.parse.quote_plus(title)
-    trackers = "&".join(f"tr={t}" for t in YTS_TRACKERS)
-    return f"magnet:?xt=urn:btih:{info_hash}&dn={dn}&{trackers}"
-
-def _parse_yts_json(data, domain='yts.mx', limit=10):
-    """Flatten YTS API response into a list of result dicts (one per quality variant)."""
-    movies = data.get("data", {}).get("movies") or []
-    parsed = []
-    for movie in movies:
-        # Rewrite the link to use the working domain instead of whatever the API returned
-        movie_url = movie.get("url", "")
-        if movie_url:
-            # Replace any YTS domain in the URL with the one that actually responded
-            movie_url = re.sub(r'https?://[^/]+', f'https://{domain}', movie_url)
-        for torrent in movie.get("torrents", []):
-            name = f"{movie.get('title_long', movie.get('title', '?'))} [{torrent['quality']}]"
-            seeds = torrent.get("seeds", 0)
-            peers = torrent.get("peers", 0)
-            try:
-                ratio = format(float(seeds) / float(peers), '.1f')
-            except ZeroDivisionError:
-                ratio = 'inf'
-            parsed.append({
-                "name": name,
-                "link": movie_url,
-                "seeders": seeds,
-                "leechers": peers,
-                "size": torrent.get("size", "?"),
-                "ratio": ratio,
-                "magnet": _build_yts_magnet(torrent["hash"], name),
-            })
-            if len(parsed) >= limit:
-                return parsed
-    return parsed
-
-def searchYTS(search_string='', quiet_mode=False, limit=10, timeout=8):
-    """Search YTS, trying known mirrors in order."""
-    global yts_url
-    for domain in YTS_DOMAINS:
-        url = f"https://{domain}/api/v2/list_movies.json?query_term={urllib.parse.quote_plus(search_string)}&limit=20&sort_by=seeds"
-        try:
-            r = requests.get(url, timeout=timeout)
-            data = r.json()
-            if data.get("status") == "ok":
-                parsed = _parse_yts_json(data, domain=domain, limit=limit)
-                if parsed:
-                    yts_url = url
-                    return parsed
-        except (requests.RequestException, ValueError):
-            continue
-    if not quiet_mode:
-        print(colored.magenta("[YTS] Error : All known mirrors returned no results or were unreachable"))
-    return []
-
-# ---------------------------------------------------------------------------
-# EZTV (TV shows, JSON API via IMDB ID lookup)
-# ---------------------------------------------------------------------------
-EZTV_DOMAINS = ['eztvx.to', 'eztv.re', 'eztv.wf', 'eztv.it']
-
-def _format_bytes(n):
-    """Human-readable size from a byte count."""
-    n = float(n)
-    for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
-        if abs(n) < 1024:
-            return f"{n:.1f} {unit}"
-        n /= 1024
-    return f"{n:.1f} PB"
-
-def _parse_episode_query(query):
-    """Extract show name, season, episode, and extra keyword filters from a search query.
-
-    Returns (clean_query, season, episode, filters) where season/episode are
-    strings (leading zeros stripped) or None, and filters is a list of leftover
-    tokens like ['1080p', 'x265'].
-    """
-    season, episode = None, None
-    ep_match = re.search(r'(?i)\bs(\d{1,2})(?:e(\d{1,2}))?\b', query)
-    if ep_match:
-        season = str(int(ep_match.group(1)))  # strip leading zeros
-        if ep_match.group(2):
-            episode = str(int(ep_match.group(2)))
-        # Remove the SxxExx part from the query
-        query = query[:ep_match.start()] + query[ep_match.end():]
-
-    # Split what remains: the first meaningful words are the show name,
-    # any leftover tokens (1080p, x265, hevc, web-dl, etc.) are filters.
-    # Heuristic: known filter-like patterns vs. show-name words.
-    _FILTER_RE = re.compile(
-        r'^(?:\d{3,4}p|[xh]\.?26[45]|hevc|avc|web[- ]?dl|bluray|remux|hdr|uhd|'
-        r'dts|aac|atmos|ddp?\d?\.?\d?|proper|repack|internal)$',
-        re.IGNORECASE,
-    )
-    words = query.strip().split()
-    clean_words, filter_words = [], []
-    for w in words:
-        if _FILTER_RE.match(w):
-            filter_words.append(w.lower())
-        else:
-            clean_words.append(w)
-    clean_query = ' '.join(clean_words).strip()
-    return clean_query, season, episode, filter_words
-
-def _imdb_lookup(query, timeout=8):
-    """Look up a TV series IMDB ID via IMDB's public suggestion endpoint.
-    Returns the numeric ID string (without 'tt' prefix) or None."""
-    slug = query.strip().replace(' ', '_').lower()
-    if not slug:
-        return None
-    url = f'https://v2.sg.media-imdb.com/suggestion/{slug[0]}/{slug}.json'
-    try:
-        r = requests.get(url, timeout=timeout)
-        for item in r.json().get('d', []):
-            if item.get('qid') == 'tvSeries':
-                return item['id'].removeprefix('tt')
-    except (requests.RequestException, ValueError, KeyError):
-        pass
-    return None
-
-def _eztv_slug(title):
-    """Derive a URL slug from an EZTV torrent title."""
-    clean = re.sub(r'\s*EZTV$', '', title, flags=re.IGNORECASE)
-    return re.sub(r'[^a-z0-9]+', '-', clean.lower()).strip('-')
-
-def _parse_eztv_json(torrents, domain='eztvx.to', season=None, episode=None, filters=None, limit=10):
-    """Filter and convert raw EZTV torrent dicts into our standard result format."""
-    parsed = []
-    for t in torrents:
-        # Season / episode filter
-        if season and t.get('season') != season:
-            continue
-        if episode and t.get('episode') != episode:
-            continue
-        # Keyword filters (all must match in title, case-insensitive)
-        title = t.get('title', '') or t.get('filename', '')
-        if filters:
-            title_lower = title.lower()
-            if not all(f in title_lower for f in filters):
-                continue
-        seeds = t.get('seeds', 0)
-        peers = t.get('peers', 0)
-        try:
-            ratio = format(float(seeds) / float(peers), '.1f')
-        except (ZeroDivisionError, ValueError):
-            ratio = 'inf'
-        size_bytes = t.get('size_bytes', 0)
-        parsed.append({
-            'name': title,
-            'link': f"https://{domain}/ep/{t.get('id', '')}/{_eztv_slug(title)}/",
-            'seeders': seeds,
-            'leechers': peers,
-            'size': _format_bytes(size_bytes),
-            'ratio': ratio,
-            'magnet': t.get('magnet_url', ''),
-        })
-        if len(parsed) >= limit:
-            break
-    return parsed
-
-def searchEZTV(search_string='', quiet_mode=False, limit=10, timeout=8):
-    """Search EZTV for TV shows via IMDB ID bridge + optional episode/quality filtering."""
-    global eztv_url
-    clean_query, season, episode, filters = _parse_episode_query(search_string)
-
-    imdb_id = _imdb_lookup(clean_query, timeout=timeout)
-    if not imdb_id:
-        if not quiet_mode:
-            print(colored.magenta("[EZTV] No matching TV show found on IMDB"))
-        return []
-
-    # Fetch from EZTV, paginating if needed, with domain fallback
-    all_torrents = []
-    working_domain = EZTV_DOMAINS[0]
-    for domain in EZTV_DOMAINS:
-        try:
-            for page in range(1, 4):  # up to 300 episodes
-                url = f"https://{domain}/api/get-torrents?imdb_id={imdb_id}&limit=100&page={page}"
-                r = requests.get(url, timeout=timeout)
-                data = r.json()
-                page_torrents = data.get('torrents', [])
-                if not page_torrents:
-                    break
-                all_torrents.extend(page_torrents)
-                if len(all_torrents) >= data.get('torrents_count', 0):
-                    break
-            if all_torrents:
-                working_domain = domain
-                eztv_url = f"https://{domain}/api/get-torrents?imdb_id={imdb_id}"
-                break
-        except (requests.RequestException, ValueError):
-            all_torrents = []
-            continue
-
-    if not all_torrents:
-        if not quiet_mode:
-            print(colored.magenta("[EZTV] Error : All known mirrors unreachable or no results"))
-        return []
-
-    parsed = _parse_eztv_json(all_torrents, domain=working_domain, season=season, episode=episode, filters=filters, limit=limit)
-
-    if not parsed and (season or episode or filters) and not quiet_mode:
-        filter_desc = ''
-        if season:
-            filter_desc += f" S{season.zfill(2)}"
-        if episode:
-            filter_desc += f"E{episode.zfill(2)}"
-        if filters:
-            filter_desc += f" {' '.join(filters)}"
-        print(colored.yellow(f"[EZTV] No results matching{filter_desc} ({len(all_torrents)} total for this show)"))
-
-    return parsed
 
 def _build_results_table(entries, source_name, start_index=1, limit=10):
     """Build a rich Table from a list of result dicts. Returns (table, count_added)."""
@@ -641,71 +305,6 @@ def print_menu(arg=0):
         Enter 'q' to exit and 'h' to see all available commands.
         ''')
 
-# Registry of active torrent sources. Each entry is (display_name, callable).
-# The callable takes (query, quiet_mode) and returns a list of result dicts.
-# To re-enable 1337x: uncomment its entry (and see search1337x for CF caveats).
-_SOURCES = [
-    ('TPB', lambda q, qm: searchPirateBayCondensed(search_string=q, quiet_mode=qm)),
-    ('YTS', lambda q, qm: searchYTS(search_string=q, quiet_mode=qm)),
-    ('EZTV', lambda q, qm: searchEZTV(search_string=q, quiet_mode=qm)),
-    # ('1337x', lambda q, qm: search1337x(q, quiet_mode=qm)),
-]
-
-def searchAllSites(query=defaultQuery, force_search=False, quiet_mode=False):
-    global results, results_rarbg, results_tpb_condensed, results_1337x, results_yts, results_eztv
-
-    if force_search:
-        results_1337x = None
-        results_yts = None
-        results_eztv = None
-        results = None
-        results_tpb_condensed = None
-
-    # RARBG and SkyTorrents permanently removed. See git history.
-    results_rarbg = []
-
-    # Cache read phase: resolve each source from cache if fresh; else queue for fetch.
-    source_results: dict = {}
-    misses: list = []
-    cache_hits: dict = {}  # source_name → age_in_seconds (for feedback)
-
-    if not force_search:
-        for name, fn in _SOURCES:
-            cached = _cache_get(query, name)
-            if cached is not None:
-                fetched_at = _RESULT_CACHE[(_normalize_query(query), name)][0]
-                cache_hits[name] = time.monotonic() - fetched_at
-                source_results[name] = cached
-            else:
-                misses.append((name, fn))
-    else:
-        misses = list(_SOURCES)
-
-    _print_cache_feedback(cache_hits, [name for name, _ in misses], quiet_mode)
-
-    # Fetch phase: only sources that missed.
-    if misses:
-        if not quiet_mode and not cache_hits:
-            # All-miss case — emit the original "Searching ..." message.
-            miss_names = ", ".join(name for name, _ in misses)
-            print(colored.magenta(f"Searching {miss_names}...\n"), end='')
-
-        with ThreadPoolExecutor(max_workers=max(1, len(misses))) as pool:
-            futures = {name: pool.submit(fn, query, quiet_mode) for name, fn in misses}
-            for name, fut in futures.items():
-                result = fut.result() or []
-                source_results[name] = result
-                _cache_put(query, name, result)
-
-        if not quiet_mode:
-            print(colored.green("Done."))
-
-    results_tpb_condensed = source_results.get('TPB', [])
-    results_yts = source_results.get('YTS', [])
-    results_eztv = source_results.get('EZTV', [])
-    results_1337x = source_results.get('1337x', [])
-    # Flat list for switch() — result numbers span all sources sequentially
-    results = results_tpb_condensed + results_yts + results_eztv + results_1337x
 
 def prettyPrintCombinedTopResults():
     global num_results
