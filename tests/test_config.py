@@ -6,14 +6,14 @@ import pytest
 
 def test_load_config_missing_file_returns_empty(th, tmp_path):
     missing = tmp_path / "nope.toml"
-    with patch.object(th, "_config_path", lambda: missing):
+    with patch.object(th.config, "_config_path", lambda: missing):
         assert th._load_config() == {}
 
 
 def test_load_config_valid_toml_returns_parsed(th, tmp_path):
     path = tmp_path / "config.toml"
     path.write_text('[real_debrid]\ntoken = "abc"\naction = "downie"\n')
-    with patch.object(th, "_config_path", lambda: path):
+    with patch.object(th.config, "_config_path", lambda: path):
         cfg = th._load_config()
     assert cfg == {"real_debrid": {"token": "abc", "action": "downie"}}
 
@@ -21,7 +21,7 @@ def test_load_config_valid_toml_returns_parsed(th, tmp_path):
 def test_load_config_malformed_toml_warns_and_returns_empty(th, tmp_path, capsys):
     path = tmp_path / "config.toml"
     path.write_text("this is not [ valid toml")
-    with patch.object(th, "_config_path", lambda: path):
+    with patch.object(th.config, "_config_path", lambda: path):
         cfg = th._load_config()
     assert cfg == {}
     out = capsys.readouterr().out
@@ -33,7 +33,7 @@ def test_load_config_binary_file_warns_and_returns_empty(th, tmp_path, capsys):
     path = tmp_path / "config.toml"
     # Non-UTF-8 bytes — mimics an accidental binary file at the config path.
     path.write_bytes(b"\xff\xfe\x00\x00binary\x00garbage\x80")
-    with patch.object(th, "_config_path", lambda: path):
+    with patch.object(th.config, "_config_path", lambda: path):
         cfg = th._load_config()
     assert cfg == {}
     out = capsys.readouterr().out
@@ -82,7 +82,7 @@ def test_resolve_rd_action_unknown_warns_and_falls_back(th, capsys):
 
 def test_save_config_creates_dir_and_writes_toml(th, tmp_path):
     path = tmp_path / "sub" / "dir" / "config.toml"  # parent dirs don't exist yet
-    with patch.object(th, "_config_path", lambda: path):
+    with patch.object(th.config, "_config_path", lambda: path):
         th._save_config({"real_debrid": {"token": "abc", "action": "downie"}})
     assert path.is_file()
     content = path.read_text(encoding="utf-8")
@@ -96,7 +96,7 @@ def test_save_config_uses_restrictive_permissions(th, tmp_path):
     if _sys.platform == "win32":
         pytest.skip("POSIX permission semantics don't apply on Windows")
     path = tmp_path / "subdir" / "config.toml"
-    with patch.object(th, "_config_path", lambda: path):
+    with patch.object(th.config, "_config_path", lambda: path):
         th._save_config({"real_debrid": {"token": "secret"}})
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
@@ -112,7 +112,7 @@ def test_save_config_hardens_existing_loose_permissions(th, tmp_path):
     path.write_text('[real_debrid]\ntoken = "old"\n', encoding="utf-8")
     path.chmod(0o644)
     path.parent.chmod(0o755)
-    with patch.object(th, "_config_path", lambda: path):
+    with patch.object(th.config, "_config_path", lambda: path):
         th._save_config({"real_debrid": {"token": "new"}})
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
@@ -121,26 +121,26 @@ def test_save_config_hardens_existing_loose_permissions(th, tmp_path):
 def test_save_config_preserves_existing_action(th, tmp_path):
     path = tmp_path / "config.toml"
     path.write_text('[real_debrid]\naction = "print"\n', encoding="utf-8")
-    with patch.object(th, "_config_path", lambda: path):
+    with patch.object(th.config, "_config_path", lambda: path):
         cfg = th._load_config()
         cfg["real_debrid"]["token"] = "new-token"
         th._save_config(cfg)
     # Re-load and verify both keys present
-    with patch.object(th, "_config_path", lambda: path):
+    with patch.object(th.config, "_config_path", lambda: path):
         reloaded = th._load_config()
     assert reloaded["real_debrid"]["token"] == "new-token"
     assert reloaded["real_debrid"]["action"] == "print"
 
 
 def _reload(th, path):
-    with patch.object(th, "_config_path", lambda: path):
+    with patch.object(th.config, "_config_path", lambda: path):
         return th._load_config()
 
 
 def test_configure_rd_tty_writes_token_and_selected_action(th, tmp_path, capsys):
     path = tmp_path / "config.toml"
-    with patch.object(th, "_config_path", lambda: path), \
-         patch.object(th, "_prompt_rd_token", return_value="my-token"), \
+    with patch.object(th.config, "_config_path", lambda: path), \
+         patch.object(th.config, "_prompt_rd_token", return_value="my-token"), \
          patch.object(th.sys.stdin, "isatty", return_value=True), \
          patch("builtins.input", return_value="4"):  # 4 = downie
         rc = th._configure_rd()
@@ -156,8 +156,8 @@ def test_configure_rd_tty_writes_token_and_selected_action(th, tmp_path, capsys)
 def test_configure_rd_empty_action_input_uses_default(th, tmp_path):
     # Enter on the action prompt → use the pre-selected default (clipboard for fresh config)
     path = tmp_path / "config.toml"
-    with patch.object(th, "_config_path", lambda: path), \
-         patch.object(th, "_prompt_rd_token", return_value="tok"), \
+    with patch.object(th.config, "_config_path", lambda: path), \
+         patch.object(th.config, "_prompt_rd_token", return_value="tok"), \
          patch.object(th.sys.stdin, "isatty", return_value=True), \
          patch("builtins.input", return_value=""):
         rc = th._configure_rd()
@@ -169,8 +169,8 @@ def test_configure_rd_existing_action_is_default(th, tmp_path):
     # Existing config action=downie → the prompt pre-selects it → Enter keeps it
     path = tmp_path / "config.toml"
     path.write_text('[real_debrid]\naction = "downie"\n', encoding="utf-8")
-    with patch.object(th, "_config_path", lambda: path), \
-         patch.object(th, "_prompt_rd_token", return_value="tok"), \
+    with patch.object(th.config, "_config_path", lambda: path), \
+         patch.object(th.config, "_prompt_rd_token", return_value="tok"), \
          patch.object(th.sys.stdin, "isatty", return_value=True), \
          patch("builtins.input", return_value=""):
         rc = th._configure_rd()
@@ -181,8 +181,8 @@ def test_configure_rd_existing_action_is_default(th, tmp_path):
 def test_configure_rd_invalid_action_reprompts(th, tmp_path, capsys):
     # Invalid input → re-prompt → valid
     path = tmp_path / "config.toml"
-    with patch.object(th, "_config_path", lambda: path), \
-         patch.object(th, "_prompt_rd_token", return_value="tok"), \
+    with patch.object(th.config, "_config_path", lambda: path), \
+         patch.object(th.config, "_prompt_rd_token", return_value="tok"), \
          patch.object(th.sys.stdin, "isatty", return_value=True), \
          patch("builtins.input", side_effect=["99", "abc", "2"]):  # 2 = print
         rc = th._configure_rd()
@@ -195,8 +195,8 @@ def test_configure_rd_piped_stdin_preserves_existing_action(th, tmp_path):
     # Non-TTY (piped) → no action prompt; existing action preserved
     path = tmp_path / "config.toml"
     path.write_text('[real_debrid]\naction = "browser"\n', encoding="utf-8")
-    with patch.object(th, "_config_path", lambda: path), \
-         patch.object(th, "_prompt_rd_token", return_value="piped-tok"), \
+    with patch.object(th.config, "_config_path", lambda: path), \
+         patch.object(th.config, "_prompt_rd_token", return_value="piped-tok"), \
          patch.object(th.sys.stdin, "isatty", return_value=False):
         rc = th._configure_rd()
     assert rc == 0
@@ -207,8 +207,8 @@ def test_configure_rd_piped_stdin_preserves_existing_action(th, tmp_path):
 
 def test_configure_rd_piped_stdin_no_existing_defaults_to_clipboard(th, tmp_path):
     path = tmp_path / "config.toml"
-    with patch.object(th, "_config_path", lambda: path), \
-         patch.object(th, "_prompt_rd_token", return_value="tok"), \
+    with patch.object(th.config, "_config_path", lambda: path), \
+         patch.object(th.config, "_prompt_rd_token", return_value="tok"), \
          patch.object(th.sys.stdin, "isatty", return_value=False):
         rc = th._configure_rd()
     assert rc == 0
@@ -217,8 +217,8 @@ def test_configure_rd_piped_stdin_no_existing_defaults_to_clipboard(th, tmp_path
 
 def test_configure_rd_empty_token_aborts(th, tmp_path, capsys):
     path = tmp_path / "config.toml"
-    with patch.object(th, "_config_path", lambda: path), \
-         patch.object(th, "_prompt_rd_token", return_value=""):
+    with patch.object(th.config, "_config_path", lambda: path), \
+         patch.object(th.config, "_prompt_rd_token", return_value=""):
         rc = th._configure_rd()
     assert rc == 1
     assert "aborting" in capsys.readouterr().out.lower()
@@ -228,10 +228,10 @@ def test_configure_rd_empty_token_aborts(th, tmp_path, capsys):
 def test_configure_rd_write_failure_returns_nonzero(th, capsys):
     def fail_save(_):
         raise OSError("disk full")
-    with patch.object(th, "_prompt_rd_token", return_value="tok"), \
+    with patch.object(th.config, "_prompt_rd_token", return_value="tok"), \
          patch.object(th.sys.stdin, "isatty", return_value=False), \
-         patch.object(th, "_save_config", side_effect=fail_save), \
-         patch.object(th, "_load_config", return_value={}):
+         patch.object(th.config, "_save_config", side_effect=fail_save), \
+         patch.object(th.config, "_load_config", return_value={}):
         rc = th._configure_rd()
     assert rc == 1
     assert "failed to write" in capsys.readouterr().out.lower()
@@ -242,8 +242,8 @@ def test_configure_rd_invalid_existing_action_falls_back_to_clipboard(th, tmp_pa
     # must still be sensible (clipboard) rather than pointing at the invalid value.
     path = tmp_path / "config.toml"
     path.write_text('[real_debrid]\naction = "bogus"\n', encoding="utf-8")
-    with patch.object(th, "_config_path", lambda: path), \
-         patch.object(th, "_prompt_rd_token", return_value="tok"), \
+    with patch.object(th.config, "_config_path", lambda: path), \
+         patch.object(th.config, "_prompt_rd_token", return_value="tok"), \
          patch.object(th.sys.stdin, "isatty", return_value=False):
         rc = th._configure_rd()
     assert rc == 0
@@ -277,7 +277,7 @@ def test_prompt_rd_action_invalid_reprompts_until_valid(th, capsys):
 
 def test_print_config_path_prints_path(th, tmp_path, capsys):
     fake = tmp_path / "config.toml"
-    with patch.object(th, "_config_path", lambda: fake):
+    with patch.object(th.config, "_config_path", lambda: fake):
         rc = th._print_config_path()
     assert rc == 0
     assert str(fake) in capsys.readouterr().out
@@ -285,7 +285,7 @@ def test_print_config_path_prints_path(th, tmp_path, capsys):
 
 def test_user_status_no_token(th, capsys, monkeypatch):
     monkeypatch.delenv("RD_TOKEN", raising=False)
-    with patch.object(th, "_load_config", return_value={}):
+    with patch.object(th.config, "_load_config", return_value={}):
         rc = th._user_status()
     assert rc == 1
     assert "token not configured" in capsys.readouterr().out
@@ -300,7 +300,7 @@ def test_user_status_success_premium(th, capsys, monkeypatch):
         "expiration": "2099-01-01T00:00:00.000Z",
         "points": 500,
     }
-    with patch.object(th, "_load_config", return_value={}), \
+    with patch.object(th.config, "_load_config", return_value={}), \
          patch.object(th, "_rd_request", return_value=user_payload):
         rc = th._user_status()
     assert rc == 0
@@ -320,7 +320,7 @@ def test_user_status_expired_premium(th, capsys, monkeypatch):
         "expiration": "2020-01-01T00:00:00.000Z",
         "points": 0,
     }
-    with patch.object(th, "_load_config", return_value={}), \
+    with patch.object(th.config, "_load_config", return_value={}), \
          patch.object(th, "_rd_request", return_value=user_payload):
         rc = th._user_status()
     assert rc == 0
@@ -329,7 +329,7 @@ def test_user_status_expired_premium(th, capsys, monkeypatch):
 
 def test_user_status_rd_error_returns_nonzero(th, capsys, monkeypatch):
     monkeypatch.setenv("RD_TOKEN", "tok")
-    with patch.object(th, "_load_config", return_value={}), \
+    with patch.object(th.config, "_load_config", return_value={}), \
          patch.object(th, "_rd_request", side_effect=th._RdError("bad token msg")):
         rc = th._user_status()
     assert rc == 1
@@ -338,7 +338,7 @@ def test_user_status_rd_error_returns_nonzero(th, capsys, monkeypatch):
 
 def test_revoke_rd_token_no_token(th, capsys, monkeypatch):
     monkeypatch.delenv("RD_TOKEN", raising=False)
-    with patch.object(th, "_load_config", return_value={}):
+    with patch.object(th.config, "_load_config", return_value={}):
         rc = th._revoke_rd_token()
     assert rc == 1
     assert "No RD token configured" in capsys.readouterr().out
@@ -349,7 +349,7 @@ def test_revoke_rd_token_env_var_no_config_touch(th, tmp_path, capsys, monkeypat
     monkeypatch.setenv("RD_TOKEN", "env-tok")
     path = tmp_path / "config.toml"
     path.write_text('[real_debrid]\ntoken = "different-config-tok"\n', encoding="utf-8")
-    with patch.object(th, "_config_path", lambda: path), \
+    with patch.object(th.config, "_config_path", lambda: path), \
          patch.object(th, "_rd_request", return_value=None) as m_req, \
          patch("builtins.input") as m_input:
         rc = th._revoke_rd_token()
@@ -366,7 +366,7 @@ def test_revoke_rd_token_config_yes_removes(th, tmp_path, capsys, monkeypatch):
     monkeypatch.delenv("RD_TOKEN", raising=False)
     path = tmp_path / "config.toml"
     path.write_text('[real_debrid]\ntoken = "saved-tok"\naction = "downie"\n', encoding="utf-8")
-    with patch.object(th, "_config_path", lambda: path), \
+    with patch.object(th.config, "_config_path", lambda: path), \
          patch.object(th, "_rd_request", return_value=None) as m_req, \
          patch("builtins.input", return_value="y"):
         rc = th._revoke_rd_token()
@@ -382,7 +382,7 @@ def test_revoke_rd_token_config_no_keeps(th, tmp_path, monkeypatch):
     monkeypatch.delenv("RD_TOKEN", raising=False)
     path = tmp_path / "config.toml"
     path.write_text('[real_debrid]\ntoken = "saved-tok"\n', encoding="utf-8")
-    with patch.object(th, "_config_path", lambda: path), \
+    with patch.object(th.config, "_config_path", lambda: path), \
          patch.object(th, "_rd_request", return_value=None), \
          patch("builtins.input", return_value="n"):
         rc = th._revoke_rd_token()
@@ -392,7 +392,7 @@ def test_revoke_rd_token_config_no_keeps(th, tmp_path, monkeypatch):
 
 def test_revoke_rd_token_rd_error_returns_nonzero(th, capsys, monkeypatch):
     monkeypatch.setenv("RD_TOKEN", "tok")
-    with patch.object(th, "_load_config", return_value={}), \
+    with patch.object(th.config, "_load_config", return_value={}), \
          patch.object(th, "_rd_request", side_effect=th._RdError("already invalid")):
         rc = th._revoke_rd_token()
     assert rc == 1
