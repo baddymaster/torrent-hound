@@ -10,6 +10,7 @@ filled in incrementally, one commit per step.
 """
 from __future__ import annotations
 
+import os
 import random
 import re
 import select
@@ -163,39 +164,34 @@ def cbreak():
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
-# Initial probe — how long to wait after a bare ESC byte before deciding it's
-# really a bare ESC vs the start of an escape sequence. Vim defaults to 25ms
-# (ttimeoutlen); we err generous at 50ms because a terminal that delivers
-# `\x1b[A` with even a tiny gap shouldn't get its arrow keys swallowed.
+# How long to wait after a bare ESC byte before deciding it's really a bare
+# ESC vs the start of an escape sequence. Vim defaults to 25ms (ttimeoutlen);
+# we use 50ms so terminals that emit `\x1b[A` with even a tiny gap don't get
+# their arrow keys swallowed.
 _ESC_PROBE_SECONDS = 0.05
-# Inter-byte gap inside a multi-byte escape sequence. Sequences arrive in a
-# burst; 5ms between bytes is the cut-off where we declare the sequence done.
-_ESC_BURST_GAP_SECONDS = 0.005
 
 
 def read_key() -> str:
     """Read one keypress (or escape sequence) from stdin in cbreak mode.
 
-    A bare ESC press sends only `\\x1b`; an arrow key sends `\\x1b[A` (or
-    B/C/D). We can't blindly `read(N)` after the initial ESC byte — that
-    blocks indefinitely on bare ESC. Strategy:
+    Reads directly via os.read() against the FD, bypassing Python's
+    TextIOWrapper buffering. The wrapper greedily pulls all available bytes
+    into its own buffer on a read(1) call — that strands the rest of an
+    escape sequence (e.g. the `[A` after `\\x1b`) in Python's buffer where
+    select.select() can't see it, making `read_key()` falsely return "ESC"
+    on every arrow press.
 
-      1. After ESC, probe stdin with a small timeout. No more bytes → bare ESC.
-      2. Otherwise drain everything that arrives in the burst (escape
-         sequences are emitted as one write() by the terminal; the inter-
-         byte gap distinguishes "more of the sequence" from "next keypress").
-      3. Map the captured tail (`[A`, `[B`, `[C`, `[D`, `[H`, `[F`) to a name.
+    A bare ESC press sends only `\\x1b`; arrow keys send `\\x1b[A`/B/C/D.
+    Strategy: read first byte; if ESC, probe FD for more; if more, drain
+    the rest of the burst in one os.read.
     """
-    ch = sys.stdin.read(1)
-    if ch != "\x1b":
-        return ch
-    if not select.select([sys.stdin], [], [], _ESC_PROBE_SECONDS)[0]:
+    fd = sys.stdin.fileno()
+    first = os.read(fd, 1).decode("utf-8", errors="replace")
+    if first != "\x1b":
+        return first
+    if not select.select([fd], [], [], _ESC_PROBE_SECONDS)[0]:
         return "ESC"
-    rest = ""
-    while True:
-        rest += sys.stdin.read(1)
-        if not select.select([sys.stdin], [], [], _ESC_BURST_GAP_SECONDS)[0]:
-            break
+    rest = os.read(fd, 32).decode("utf-8", errors="replace")
     return {
         "[A": "UP", "[B": "DOWN", "[C": "RIGHT", "[D": "LEFT",
         "[H": "HOME", "[F": "END",
