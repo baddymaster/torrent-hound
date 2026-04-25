@@ -126,8 +126,29 @@ def _selected_entry(state: _AppState) -> dict | None:
     return rows[state.selected_idx]
 
 
+def _handle_filter_key(state: _AppState, key: str) -> bool:
+    """Filter-mode input: build state.filter_text; esc cancels, enter accepts."""
+    if key == "ESC":
+        state.filter_text = ""
+        state.mode = RESULTS
+        state.selected_idx = 0
+    elif key in ("\r", "\n"):
+        state.mode = RESULTS
+        state.selected_idx = 0
+    elif key == "\x7f":  # backspace
+        state.filter_text = state.filter_text[:-1]
+        state.selected_idx = 0
+    elif len(key) == 1 and key.isprintable():
+        state.filter_text += key
+        state.selected_idx = 0
+    return True
+
+
 def handle_key(state: _AppState, key: str) -> bool:
     """Mutates state in-place. Returns False to break the event loop."""
+    if state.mode == FILTER:
+        return _handle_filter_key(state, key)
+
     if key == "q":
         return False
 
@@ -137,6 +158,10 @@ def handle_key(state: _AppState, key: str) -> bool:
             state.selected_idx = max(0, state.selected_idx - 1)
         elif key == "DOWN":
             state.selected_idx = min(max(0, len(rows) - 1), state.selected_idx + 1)
+        elif key == "/":
+            state.mode = FILTER
+            state.filter_text = ""
+            state.selected_idx = 0
         elif key in _RESULTS_ACTIONS:
             entry = _selected_entry(state)
             if entry is not None:
@@ -160,6 +185,12 @@ def _build_layout() -> Layout:
 
 
 def render_header(state: _AppState) -> Text:
+    if state.mode == FILTER:
+        return Text.assemble(
+            ("torrent-hound — ", "bold"),
+            (f"/{state.filter_text}", "bold #ffb84d"),
+            ("_", "bold #ffb84d blink"),
+        )
     return Text(f"torrent-hound — '{_state.query}'", style="bold")
 
 
