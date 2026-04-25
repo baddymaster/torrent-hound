@@ -228,11 +228,20 @@ def render_toast(state: _AppState) -> Text:
     return Text(state.toast or "", style="green")
 
 
+# Mode-aware footer key hints. M3 from the UX polish spec — the footer
+# adapts to the screen the user is on rather than dumping a static legend.
+_FOOTER_HINTS = {
+    LOADING:    "q quit",
+    RESULTS:    "↑↓ move · enter/c copy · o open · d send · s seedr · r real-debrid · / filter · q quit",
+    FILTER:     "type to narrow · enter accept · esc cancel",
+    RD_PICKER:  "0-9 pick · a all · enter confirm · esc cancel",
+    RD_WAITING: "⏳ waiting on Debrid · esc cancel",
+    HELP:       "any key to dismiss",
+}
+
+
 def render_footer(state: _AppState) -> Text:
-    return Text(
-        "↑↓ move · enter/c copy · o open page · d send to client · s seedr · q quit",
-        style="dim",
-    )
+    return Text(_FOOTER_HINTS.get(state.mode, ""), style="dim")
 
 
 def render(state: _AppState) -> Layout:
