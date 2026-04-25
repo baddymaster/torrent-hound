@@ -31,6 +31,7 @@ from rich.table import Table
 from rich.text import Text
 
 from torrent_hound import state as _state
+from torrent_hound.realdebrid import _cmd_rd
 from torrent_hound.sources import searchAllSites
 
 # ── modes ──────────────────────────────────────────────────────────────
@@ -85,6 +86,9 @@ class _AppState:
     # Fetch timing for the run-summary line (M5).
     fetch_started_at: float = 0.0
     fetch_elapsed: float = 0.0
+    # Set when the user requests RD on a row; main loop suspends Live and
+    # runs _cmd_rd then clears this. None at rest.
+    rd_request_entry: dict | None = None
 
 
 # ── input ──────────────────────────────────────────────────────────────
@@ -207,7 +211,10 @@ def handle_key(state: _AppState, key: str) -> bool:
             if entry is not None:
                 state.toast = _RESULTS_ACTIONS[key](entry)
         elif key == "r":
-            state.toast = "Real-Debrid integration lands in step 8"
+            entry = _selected_entry(state)
+            if entry is not None:
+                # Main loop picks this up, suspends Live, runs _cmd_rd, restarts.
+                state.rd_request_entry = entry
 
     return True
 
@@ -409,6 +416,38 @@ def run_app() -> None:
                 key = read_key()
                 if not handle_key(state, key):
                     break
+            if state.rd_request_entry is not None:
+                _run_rd_suspended(live, state)
             if state.mode == LOADING:
                 _rotate_verb(state)
             live.update(render(state))
+
+
+def _run_rd_suspended(live: Live, state: _AppState) -> None:
+    """Drop out of the Live render so _cmd_rd's prints/inputs can drive the
+    terminal directly, then restore the Live screen on completion. First-ship
+    integration; a fully-native RD picker lands in a later iteration."""
+    entry = state.rd_request_entry
+    state.rd_request_entry = None
+    live.stop()
+    # Restore the cbreak'd terminal to cooked mode so input() inside _cmd_rd
+    # works normally; re-enter cbreak when Live restarts.
+    fd = sys.stdin.fileno()
+    saved = termios.tcgetattr(fd)
+    try:
+        # cooked mode for _cmd_rd
+        cooked = termios.tcgetattr(fd)
+        # tcgetattr returns the current attrs; we want canonical mode + echo.
+        # Easier: temporarily restore the attrs that were set BEFORE cbreak() —
+        # we don't have those here, so ask termios for sane defaults.
+        cooked[3] |= termios.ICANON | termios.ECHO  # lflag
+        termios.tcsetattr(fd, termios.TCSADRAIN, cooked)
+        try:
+            _cmd_rd(entry)
+        except Exception as e:  # noqa: BLE001 — defence; RD path has many failure modes
+            print(f"Real-Debrid: {e}")
+        input("\n[press enter to return to torrent-hound]")
+        state.toast = "Real-Debrid action complete"
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+        live.start()
