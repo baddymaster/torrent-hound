@@ -22,11 +22,11 @@ def test_fallback_tries_next_domain_on_connection_error(th, tpb_ubuntu_html):
         return _make_response(tpb_ubuntu_html)
 
     with patch.object(th, "TPB_DOMAINS", ["dead.invalid", "thepiratebay.zone"]):
-        with patch.object(th, "tpb_working_domain", "dead.invalid"):
+        with patch.object(th.state, "tpb_working_domain", "dead.invalid"):
             with patch.object(th.requests, "get", side_effect=fake_get):
                 results = th.searchPirateBayCondensed("ubuntu", timeout=1)
                 assert len(results) > 0
-                assert th.tpb_working_domain == "thepiratebay.zone"
+                assert th.state.tpb_working_domain == "thepiratebay.zone"
 
 
 def test_fallback_tries_next_domain_on_empty_response(th, tpb_ubuntu_html):
@@ -39,11 +39,11 @@ def test_fallback_tries_next_domain_on_empty_response(th, tpb_ubuntu_html):
         return _make_response(tpb_ubuntu_html)
 
     with patch.object(th, "TPB_DOMAINS", ["dead.invalid", "thepiratebay.zone"]):
-        with patch.object(th, "tpb_working_domain", "dead.invalid"):
+        with patch.object(th.state, "tpb_working_domain", "dead.invalid"):
             with patch.object(th.requests, "get", side_effect=fake_get):
                 results = th.searchPirateBayCondensed("ubuntu", timeout=1)
                 assert len(results) > 0
-                assert th.tpb_working_domain == "thepiratebay.zone"
+                assert th.state.tpb_working_domain == "thepiratebay.zone"
 
 
 def test_fallback_returns_empty_when_all_domains_fail(th, capsys):
@@ -53,7 +53,7 @@ def test_fallback_returns_empty_when_all_domains_fail(th, capsys):
         raise requests.ConnectionError("all dead")
 
     with patch.object(th, "TPB_DOMAINS", ["a.invalid", "b.invalid"]):
-        with patch.object(th, "tpb_working_domain", "a.invalid"):
+        with patch.object(th.state, "tpb_working_domain", "a.invalid"):
             with patch.object(th.requests, "get", side_effect=always_fail):
                 results = th.searchPirateBayCondensed("ubuntu", timeout=1)
                 assert results == []

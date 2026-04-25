@@ -4,7 +4,12 @@ from __future__ import annotations
 import requests
 from bs4 import BeautifulSoup
 
+from torrent_hound import state
+from torrent_hound.ui import colored
+
 from .base import removeAndReplaceSpaces
+
+_DEFAULT_QUERY = 'ubuntu'
 
 # TPB domains tried in order. Mirrors churn often; add new ones to the front
 # when they come up, drop dead ones from the tail.
@@ -54,13 +59,11 @@ def _parse_tpb_html(html, domain='thepiratebay.zone', limit=10):
 def searchPirateBayCondensed(search_string=None, quiet_mode=False, limit=10, timeout=8):
     """Search TPB, trying known mirrors in order until one returns results.
     On success, remembers the working domain for subsequent calls in this run."""
-    import torrent_hound as _th
-
     if search_string is None:
-        search_string = _th.defaultQuery
+        search_string = _DEFAULT_QUERY
 
     # Try last-known-good domain first, then the rest
-    domains_to_try = [_th.tpb_working_domain] + [d for d in TPB_DOMAINS if d != _th.tpb_working_domain]
+    domains_to_try = [state.tpb_working_domain] + [d for d in TPB_DOMAINS if d != state.tpb_working_domain]
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
 
     for domain in domains_to_try:
@@ -69,14 +72,14 @@ def searchPirateBayCondensed(search_string=None, quiet_mode=False, limit=10, tim
             r = requests.get(url, headers=headers, timeout=timeout)
             parsed = _parse_tpb_html(r.content, domain=domain, limit=limit)
             if parsed:
-                _th.tpb_working_domain = domain
-                _th.tpb_url = url
-                _th.results_tpb_condensed = parsed
+                state.tpb_working_domain = domain
+                state.tpb_url = url
+                state.results_tpb_condensed = parsed
                 return parsed
         except requests.RequestException:
             continue  # try next mirror
 
     if not quiet_mode:
-        print(_th.colored.magenta("[PirateBay] Error : All known mirrors returned no results or were unreachable"))
-    _th.results_tpb_condensed = []
-    return _th.results_tpb_condensed
+        print(colored.magenta("[PirateBay] Error : All known mirrors returned no results or were unreachable"))
+    state.results_tpb_condensed = []
+    return state.results_tpb_condensed

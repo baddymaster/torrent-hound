@@ -17,6 +17,7 @@ from __future__ import annotations
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+from torrent_hound import state
 from torrent_hound.cache import (
     _RESULT_CACHE,
     _cache_get,
@@ -24,6 +25,7 @@ from torrent_hound.cache import (
     _normalize_query,
     _print_cache_feedback,
 )
+from torrent_hound.ui import colored
 
 from .eztv import searchEZTV
 from .tpb import searchPirateBayCondensed
@@ -41,23 +43,22 @@ _SOURCES = [
 ]
 
 
-def searchAllSites(query=None, force_search=False, quiet_mode=False):
-    # Lazy reference to the package so we can read/write shared globals that
-    # still live in _monolith (state.py takes over in Commit 6).
-    import torrent_hound as _th
+_DEFAULT_QUERY = 'ubuntu'
 
+
+def searchAllSites(query=None, force_search=False, quiet_mode=False):
     if query is None:
-        query = _th.defaultQuery
+        query = _DEFAULT_QUERY
 
     if force_search:
-        _th.results_1337x = None
-        _th.results_yts = None
-        _th.results_eztv = None
-        _th.results = None
-        _th.results_tpb_condensed = None
+        state.results_1337x = None
+        state.results_yts = None
+        state.results_eztv = None
+        state.results = None
+        state.results_tpb_condensed = None
 
     # RARBG and SkyTorrents permanently removed. See git history.
-    _th.results_rarbg = []
+    state.results_rarbg = []
 
     # Cache read phase: resolve each source from cache if fresh; else queue for fetch.
     source_results: dict = {}
@@ -83,7 +84,7 @@ def searchAllSites(query=None, force_search=False, quiet_mode=False):
         if not quiet_mode and not cache_hits:
             # All-miss case — emit the original "Searching ..." message.
             miss_names = ", ".join(name for name, _ in misses)
-            print(_th.colored.magenta(f"Searching {miss_names}...\n"), end='')
+            print(colored.magenta(f"Searching {miss_names}...\n"), end='')
 
         with ThreadPoolExecutor(max_workers=max(1, len(misses))) as pool:
             futures = {name: pool.submit(fn, query, quiet_mode) for name, fn in misses}
@@ -93,16 +94,16 @@ def searchAllSites(query=None, force_search=False, quiet_mode=False):
                 _cache_put(query, name, result)
 
         if not quiet_mode:
-            print(_th.colored.green("Done."))
+            print(colored.green("Done."))
 
-    _th.results_tpb_condensed = source_results.get('TPB', [])
-    _th.results_yts = source_results.get('YTS', [])
-    _th.results_eztv = source_results.get('EZTV', [])
-    _th.results_1337x = source_results.get('1337x', [])
+    state.results_tpb_condensed = source_results.get('TPB', [])
+    state.results_yts = source_results.get('YTS', [])
+    state.results_eztv = source_results.get('EZTV', [])
+    state.results_1337x = source_results.get('1337x', [])
     # Flat list for switch() — result numbers span all sources sequentially
-    _th.results = (
-        _th.results_tpb_condensed
-        + _th.results_yts
-        + _th.results_eztv
-        + _th.results_1337x
+    state.results = (
+        state.results_tpb_condensed
+        + state.results_yts
+        + state.results_eztv
+        + state.results_1337x
     )

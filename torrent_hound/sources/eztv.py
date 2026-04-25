@@ -5,6 +5,9 @@ import re
 
 import requests
 
+from torrent_hound import state
+from torrent_hound.ui import colored
+
 from .base import _format_bytes
 
 EZTV_DOMAINS = ['eztvx.to', 'eztv.re', 'eztv.wf', 'eztv.it']
@@ -106,13 +109,12 @@ def _parse_eztv_json(torrents, domain='eztvx.to', season=None, episode=None, fil
 
 def searchEZTV(search_string='', quiet_mode=False, limit=10, timeout=8):
     """Search EZTV for TV shows via IMDB ID bridge + optional episode/quality filtering."""
-    import torrent_hound as _th
     clean_query, season, episode, filters = _parse_episode_query(search_string)
 
     imdb_id = _imdb_lookup(clean_query, timeout=timeout)
     if not imdb_id:
         if not quiet_mode:
-            print(_th.colored.magenta("[EZTV] No matching TV show found on IMDB"))
+            print(colored.magenta("[EZTV] No matching TV show found on IMDB"))
         return []
 
     # Fetch from EZTV, paginating if needed, with domain fallback
@@ -132,7 +134,7 @@ def searchEZTV(search_string='', quiet_mode=False, limit=10, timeout=8):
                     break
             if all_torrents:
                 working_domain = domain
-                _th.eztv_url = f"https://{domain}/api/get-torrents?imdb_id={imdb_id}"
+                state.eztv_url = f"https://{domain}/api/get-torrents?imdb_id={imdb_id}"
                 break
         except (requests.RequestException, ValueError):
             all_torrents = []
@@ -140,7 +142,7 @@ def searchEZTV(search_string='', quiet_mode=False, limit=10, timeout=8):
 
     if not all_torrents:
         if not quiet_mode:
-            print(_th.colored.magenta("[EZTV] Error : All known mirrors unreachable or no results"))
+            print(colored.magenta("[EZTV] Error : All known mirrors unreachable or no results"))
         return []
 
     parsed = _parse_eztv_json(all_torrents, domain=working_domain, season=season, episode=episode, filters=filters, limit=limit)
@@ -153,6 +155,6 @@ def searchEZTV(search_string='', quiet_mode=False, limit=10, timeout=8):
             filter_desc += f"E{episode.zfill(2)}"
         if filters:
             filter_desc += f" {' '.join(filters)}"
-        print(_th.colored.yellow(f"[EZTV] No results matching{filter_desc} ({len(all_torrents)} total for this show)"))
+        print(colored.yellow(f"[EZTV] No results matching{filter_desc} ({len(all_torrents)} total for this show)"))
 
     return parsed

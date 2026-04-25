@@ -13,7 +13,12 @@ from __future__ import annotations
 import requests
 from bs4 import BeautifulSoup
 
+from torrent_hound import state, ui
+from torrent_hound.ui import colored
+
 from .base import removeAndReplaceSpaces
+
+_DEFAULT_QUERY = 'ubuntu'
 
 
 def extract_magnet_link_1337x(url):
@@ -28,16 +33,14 @@ def extract_magnet_link_1337x(url):
 
 
 def search1337x(search_string=None, domain='1337x.to', quiet_mode=False, limit=10):
-    import torrent_hound as _th
-
     if search_string is None:
-        search_string = _th.defaultQuery
+        search_string = _DEFAULT_QUERY
 
     query = removeAndReplaceSpaces(search_string)
     page_no = 1
     baseURL = f'https://{domain}'
     url = f'{baseURL}/search/{query}/{page_no}/'
-    _th.url_1337x = url
+    state.url_1337x = url
 
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
     response = requests.get(url, headers=headers)
@@ -45,8 +48,8 @@ def search1337x(search_string=None, domain='1337x.to', quiet_mode=False, limit=1
 
     if response.status_code == 403 and response.headers.get('cf-mitigated', '').lower() == 'challenge':
         if not quiet_mode:
-            print(_th.colored.magenta("[1337x] Error : Blocked by Cloudflare captcha"))
-        _th.results_1337x = results
+            print(colored.magenta("[1337x] Error : Blocked by Cloudflare captcha"))
+        state.results_1337x = results
         return results
 
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -75,13 +78,12 @@ def search1337x(search_string=None, domain='1337x.to', quiet_mode=False, limit=1
             results.append(row_data)
     except AttributeError:
         if not quiet_mode:
-            print(_th.colored.magenta("[1337x] Error : No results found"))
-    _th.results_1337x = results
+            print(colored.magenta("[1337x] Error : No results found"))
+    state.results_1337x = results
     return results
 
 
 def pretty_print_top_results_1337x(limit=10):
-    import torrent_hound as _th
-    table, count = _th._build_results_table(_th.results_1337x, "1337x", start_index=_th.num_results + 1, limit=limit)
-    _th.console.print(table)
-    return _th.num_results + count
+    table, count = ui._build_results_table(state.results_1337x, "1337x", start_index=state.num_results + 1, limit=limit)
+    ui.console.print(table)
+    return state.num_results + count

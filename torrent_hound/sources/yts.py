@@ -6,6 +6,9 @@ import urllib.parse
 
 import requests
 
+from torrent_hound import state
+from torrent_hound.ui import colored
+
 YTS_DOMAINS = ['yts.lt', 'yts.am', 'yts.mx', 'yts.rs']
 
 YTS_TRACKERS = [
@@ -57,7 +60,6 @@ def _parse_yts_json(data, domain='yts.mx', limit=10):
 
 def searchYTS(search_string='', quiet_mode=False, limit=10, timeout=8):
     """Search YTS, trying known mirrors in order."""
-    import torrent_hound as _th
     for domain in YTS_DOMAINS:
         url = f"https://{domain}/api/v2/list_movies.json?query_term={urllib.parse.quote_plus(search_string)}&limit=20&sort_by=seeds"
         try:
@@ -66,10 +68,10 @@ def searchYTS(search_string='', quiet_mode=False, limit=10, timeout=8):
             if data.get("status") == "ok":
                 parsed = _parse_yts_json(data, domain=domain, limit=limit)
                 if parsed:
-                    _th.yts_url = url
+                    state.yts_url = url
                     return parsed
         except (requests.RequestException, ValueError):
             continue
     if not quiet_mode:
-        print(_th.colored.magenta("[YTS] Error : All known mirrors returned no results or were unreachable"))
+        print(colored.magenta("[YTS] Error : All known mirrors returned no results or were unreachable"))
     return []

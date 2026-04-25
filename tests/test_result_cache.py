@@ -16,11 +16,11 @@ import pytest
 def clean_cache(th):
     """Reset the cache and result globals before and after each test."""
     th._RESULT_CACHE.clear()
-    th.results = []
-    th.results_tpb_condensed = []
-    th.results_yts = []
-    th.results_eztv = []
-    th.results_1337x = []
+    th.state.results = []
+    th.state.results_tpb_condensed = []
+    th.state.results_yts = []
+    th.state.results_eztv = []
+    th.state.results_1337x = []
     yield
     th._RESULT_CACHE.clear()
 
@@ -93,7 +93,7 @@ def test_force_search_updates_cache(th, mock_sources):
     th.searchAllSites("ubuntu", quiet_mode=True)
     for m in mock_sources.values():
         assert m.call_count == 0
-    assert th.results_tpb_condensed[0]["name"] == "tpb-NEW"
+    assert th.state.results_tpb_condensed[0]["name"] == "tpb-NEW"
 
 
 def test_query_normalization_hits_same_entry(th, mock_sources):
@@ -130,4 +130,4 @@ def test_mixed_hit_miss_only_fetches_missed_source(th, mock_sources):
     assert mock_sources["TPB"].call_count == 0
     assert mock_sources["YTS"].call_count == 1
     assert mock_sources["EZTV"].call_count == 1
-    assert th.results_tpb_condensed[0]["name"] == "cached-tpb"
+    assert th.state.results_tpb_condensed[0]["name"] == "cached-tpb"
