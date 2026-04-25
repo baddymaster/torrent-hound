@@ -59,10 +59,10 @@ def _print_cache_feedback(cache_hits: dict, miss_names: list, quiet_mode: bool) 
     'Searching ...' message (this function is a no-op when there are no hits)."""
     if quiet_mode or not cache_hits:
         return
-    # Lazy import: `colored` still lives in _monolith, which is being exec'd
-    # into the torrent_hound namespace when this module loads. Deferring the
-    # lookup to call time sidesteps the circular-import problem.
-    from torrent_hound import colored
+    # Lazy import: cache.py loads before ui.py during package initialisation
+    # (alphabetical submodule import order in __init__.py). Deferring the
+    # `colored` lookup to call time sidesteps the circular-import problem.
+    from torrent_hound.ui import colored
     max_age = _format_age(max(cache_hits.values()))
     if not miss_names:
         print(colored.magenta(f"Using cached results ({max_age} old)."))
