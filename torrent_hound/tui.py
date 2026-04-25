@@ -163,34 +163,43 @@ def cbreak():
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
-_ESC_PROBE_SECONDS = 0.01
+# Initial probe — how long to wait after a bare ESC byte before deciding it's
+# really a bare ESC vs the start of an escape sequence. Vim defaults to 25ms
+# (ttimeoutlen); we err generous at 50ms because a terminal that delivers
+# `\x1b[A` with even a tiny gap shouldn't get its arrow keys swallowed.
+_ESC_PROBE_SECONDS = 0.05
+# Inter-byte gap inside a multi-byte escape sequence. Sequences arrive in a
+# burst; 5ms between bytes is the cut-off where we declare the sequence done.
+_ESC_BURST_GAP_SECONDS = 0.005
 
 
 def read_key() -> str:
     """Read one keypress (or escape sequence) from stdin in cbreak mode.
 
-    A bare ESC press sends only `\\x1b`; an arrow key sends `\\x1b[A` (or B/C/D).
-    We can't blindly `read(2)` after the initial ESC byte — that blocks
-    indefinitely on bare ESC. Instead, probe stdin with a tiny non-blocking
-    select to see if more bytes are coming, and bail out as ESC if not.
+    A bare ESC press sends only `\\x1b`; an arrow key sends `\\x1b[A` (or
+    B/C/D). We can't blindly `read(N)` after the initial ESC byte — that
+    blocks indefinitely on bare ESC. Strategy:
+
+      1. After ESC, probe stdin with a small timeout. No more bytes → bare ESC.
+      2. Otherwise drain everything that arrives in the burst (escape
+         sequences are emitted as one write() by the terminal; the inter-
+         byte gap distinguishes "more of the sequence" from "next keypress").
+      3. Map the captured tail (`[A`, `[B`, `[C`, `[D`, `[H`, `[F`) to a name.
     """
     ch = sys.stdin.read(1)
     if ch != "\x1b":
         return ch
-    # Probe for the next byte of an escape sequence
     if not select.select([sys.stdin], [], [], _ESC_PROBE_SECONDS)[0]:
         return "ESC"
-    bracket = sys.stdin.read(1)
-    if bracket != "[":
-        # Some other escape variant (Alt+key, etc.). Treat as ESC.
-        return "ESC"
-    if not select.select([sys.stdin], [], [], _ESC_PROBE_SECONDS)[0]:
-        return "ESC"
-    final = sys.stdin.read(1)
+    rest = ""
+    while True:
+        rest += sys.stdin.read(1)
+        if not select.select([sys.stdin], [], [], _ESC_BURST_GAP_SECONDS)[0]:
+            break
     return {
-        "A": "UP", "B": "DOWN", "C": "RIGHT", "D": "LEFT",
-        "H": "HOME", "F": "END",
-    }.get(final, "ESC")
+        "[A": "UP", "[B": "DOWN", "[C": "RIGHT", "[D": "LEFT",
+        "[H": "HOME", "[F": "END",
+    }.get(rest, "ESC")
 
 
 # ── action handlers ────────────────────────────────────────────────────
