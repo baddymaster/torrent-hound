@@ -39,6 +39,7 @@ from torrent_hound.ui import console as _console
 LOADING = "loading"
 RESULTS = "results"
 FILTER = "filter"
+SEARCH = "search"      # new-query prompt
 RD_PICKER = "rd_picker"
 RD_WAITING = "rd_waiting"
 HELP = "help"
@@ -108,6 +109,9 @@ class _AppState:
     rd_request_entry: dict | None = None
     # Wall-clock when toast was set; loop expires after TOAST_TTL_SECONDS.
     toast_set_at: float = 0.0
+    # SEARCH mode buffer (typed new-query string) and the refetch trigger.
+    search_text: str = ""
+    refetch_request: bool = False
 
 
 def _set_toast(state: _AppState, message: str) -> None:
@@ -162,19 +166,12 @@ def _action_send_to_client(entry) -> str:
     return "Magnet sent to default torrent client"
 
 
-def _action_seedr(entry) -> str:
-    pyperclip.copy(str(entry["magnet"]))
-    webbrowser.open("https://www.seedr.cc", new=2)
-    return "Magnet copied + Seedr opened"
-
-
 _RESULTS_ACTIONS = {
     "c": _action_copy,
     "\r": _action_copy,
     "\n": _action_copy,
     "o": _action_open_page,
     "d": _action_send_to_client,
-    "s": _action_seedr,
 }
 
 
@@ -217,10 +214,37 @@ def _handle_filter_key(state: _AppState, key: str) -> bool:
     return True
 
 
+def _handle_search_key(state: _AppState, key: str) -> bool:
+    """Search-mode input: build state.search_text; enter submits, esc cancels."""
+    if key == "ESC":
+        state.search_text = ""
+        state.mode = RESULTS
+    elif key in ("\r", "\n"):
+        new_query = state.search_text.strip()
+        if new_query:
+            _state.query = new_query
+            # Reset for fresh fetch
+            state.filter_text = ""
+            state.selected_idx = 0
+            state.search_text = ""
+            state.source_progress = {}
+            state.refetch_request = True
+            state.mode = LOADING
+        else:
+            state.mode = RESULTS
+    elif key == "\x7f":  # backspace
+        state.search_text = state.search_text[:-1]
+    elif len(key) == 1 and key.isprintable():
+        state.search_text += key
+    return True
+
+
 def handle_key(state: _AppState, key: str) -> bool:
     """Mutates state in-place. Returns False to break the event loop."""
     if state.mode == FILTER:
         return _handle_filter_key(state, key)
+    if state.mode == SEARCH:
+        return _handle_search_key(state, key)
 
     if key == "q":
         return False
@@ -235,11 +259,20 @@ def handle_key(state: _AppState, key: str) -> bool:
             state.mode = FILTER
             state.filter_text = ""
             state.selected_idx = 0
+        elif key == "s":
+            # Enter new-search mode (matches old REPL `s` semantics).
+            state.mode = SEARCH
+            state.search_text = ""
+        elif key == "r":
+            # Repeat the current search (refetch; failed sources retry).
+            state.source_progress = {}
+            state.refetch_request = True
+            state.mode = LOADING
         elif key in _RESULTS_ACTIONS:
             entry = _selected_entry(state)
             if entry is not None:
                 _set_toast(state, _RESULTS_ACTIONS[key](entry))
-        elif key == "r":
+        elif key == "b":
             entry = _selected_entry(state)
             if entry is not None:
                 # Main loop picks this up, suspends Live, runs _cmd_rd, restarts.
@@ -329,6 +362,12 @@ def render_header(state: _AppState):
                 ("_", PALETTE["blink"]),
             ),
         )
+    if state.mode == SEARCH:
+        return Text.assemble(
+            ("New search: ", PALETTE["headline"]),
+            (state.search_text, PALETTE["accent"]),
+            ("_", PALETTE["blink"]),
+        )
     if state.mode == RESULTS:
         return _summary_line(state)
     return Text(f"torrent-hound — '{_state.query}'", style=PALETTE["headline"])
@@ -413,8 +452,9 @@ def render_toast(state: _AppState) -> Text:
 # adapts to the screen the user is on rather than dumping a static legend.
 _FOOTER_HINTS = {
     LOADING:    "q quit",
-    RESULTS:    "↑↓ move · enter/c copy · o open · d send · s seedr · r real-debrid · / filter · q quit",
+    RESULTS:    "↑↓ move · enter/c copy · o open page · d download · b real-debrid · s search · r repeat · / filter · q quit",
     FILTER:     "type to narrow · enter accept · esc cancel",
+    SEARCH:     "type query · enter search · esc cancel",
     RD_PICKER:  "0-9 pick · a all · enter confirm · esc cancel",
     RD_WAITING: "⏳ waiting on Debrid · esc cancel",
     HELP:       "any key to dismiss",
@@ -488,6 +528,9 @@ def run_app() -> None:
                     break
             if state.rd_request_entry is not None:
                 _run_rd_suspended(live, state)
+            if state.refetch_request:
+                state.refetch_request = False
+                _kick_off_fetch(state)
             if state.mode == LOADING:
                 _rotate_verb(state)
             _expire_toast(state)
