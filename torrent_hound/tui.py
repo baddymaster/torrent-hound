@@ -10,17 +10,23 @@ filled in incrementally, one commit per step.
 """
 from __future__ import annotations
 
+import random
 import re
+import select
 import sys
 import termios
+import threading
+import time
 import tty
 import webbrowser
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 import pyperclip
+from rich.console import Group
 from rich.layout import Layout
 from rich.live import Live
+from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
 
@@ -36,15 +42,46 @@ RD_WAITING = "rd_waiting"
 HELP = "help"
 
 
+# Rotating-verb pool, search-phase only. Torrent-themed by design — every
+# phrase maps to something a multi-source torrent search might be doing.
+# RD-phase verbs land in step 8.
+SEARCH_VERBS = [
+    "Sniffing the trackers", "Catching a whiff of seeders", "Scenting magnets",
+    "Picking up tracks", "Nosing the swarm", "Following the announce trail",
+    "Combing the DHT", "Pawing through mirrors", "Canvassing seeders",
+    "Scenting fresh torrents", "Nosing for peers", "Sniffing bencode",
+    "Hunting seeders", "Stalking peers", "Prowling for trackers",
+    "Chasing hashes", "Baying at trackers", "Treeing the torrent",
+    "Hot on the scrape", "Cornering the swarm", "Running down leechers",
+    "Closing on the infohash", "Dogging the announce",
+    "Fetching magnets", "Hauling bitfields", "Dragging home the .torrent",
+    "Bringing back the payload", "Scooping up seeders", "Wrangling peers",
+    "Carting off chunks", "Lugging the swarm home", "Reeling in hashes",
+    "Sieving peers", "Peeling packets", "Decoding magnets",
+    "Unweaving trackers", "Stitching chunks", "Parsing the bitfield",
+    "Shaking the DHT", "Rattling trackers", "Waking the swarm",
+    "Herding peers", "Polling announces", "Unchoking peers",
+    "Walking the DHT", "Hashing chunks", "Reticulating pieces",
+    "Verifying infohash", "Handshaking", "Fanning out", "Merging swarms",
+    "Scraping trackers", "Announcing to swarm", "Resolving peers",
+    "Parsing bencode", "Tallying seeders", "Sieving leechers",
+]
+VERB_ROTATE_SECONDS = 2.0
+
+
 @dataclass
 class _AppState:
     """All TUI state in one place. Render is a pure function of this."""
-    mode: str = RESULTS
+    mode: str = LOADING
     selected_idx: int = 0
     filter_text: str = ""
     toast: str | None = None
-    # Per-source progress, populated during loading. Mode determines visibility.
+    # Per-source progress: {source_name: status_string}.
+    # Status: "fetching" | "cached" | "ok:N" | "empty".
     source_progress: dict = field(default_factory=dict)
+    # Rotating verb shown during LOADING. Swap every ~VERB_ROTATE_SECONDS.
+    current_verb: str = "Sniffing the trackers"
+    verb_set_at: float = 0.0
 
 
 # ── input ──────────────────────────────────────────────────────────────
@@ -184,7 +221,42 @@ def _build_layout() -> Layout:
     return layout
 
 
-def render_header(state: _AppState) -> Text:
+_PROGRESS_GLYPHS = {
+    "fetching": ("⠋", "bold #ffb84d"),
+    "cached":   ("⚡", "yellow"),
+    "empty":    ("·", "dim"),
+}
+
+
+def _progress_glyph(status: str) -> tuple[str, str]:
+    if status.startswith("ok:"):
+        return ("✓", "green")
+    return _PROGRESS_GLYPHS.get(status, ("?", "dim"))
+
+
+def _render_progress_strip(state: _AppState) -> Text:
+    """One-line summary: 'TPB ⠋  YTS ✓  EZTV ⚡' style."""
+    if not state.source_progress:
+        return Text("(starting fetch…)", style="dim")
+    parts = []
+    for name, status in state.source_progress.items():
+        glyph, glyph_style = _progress_glyph(status)
+        parts.append((f"{name} ", "bold"))
+        parts.append((f"{glyph} ", glyph_style))
+        if status.startswith("ok:"):
+            count = status.split(":", 1)[1]
+            parts.append((f"({count}) ", "dim"))
+        elif status == "cached":
+            parts.append(("(cached) ", "dim"))
+        elif status == "empty":
+            parts.append(("(no results) ", "dim"))
+    return Text.assemble(*parts)
+
+
+def render_header(state: _AppState):
+    if state.mode == LOADING:
+        verb = Spinner("dots", text=Text(state.current_verb + "…", style="bold"))
+        return Group(_render_progress_strip(state), verb)
     if state.mode == FILTER:
         return Text.assemble(
             ("torrent-hound — ", "bold"),
@@ -254,6 +326,31 @@ def render(state: _AppState) -> Layout:
 
 
 # ── entry ──────────────────────────────────────────────────────────────
+def _rotate_verb(state: _AppState) -> None:
+    """Swap to a fresh random verb if the rotate window has elapsed."""
+    now = time.monotonic()
+    if now - state.verb_set_at >= VERB_ROTATE_SECONDS:
+        state.current_verb = random.choice(SEARCH_VERBS)
+        state.verb_set_at = now
+
+
+def _kick_off_fetch(state: _AppState) -> threading.Thread:
+    """Launch searchAllSites in a worker; flip mode to RESULTS when done."""
+    def _on_progress(name: str, status: str) -> None:
+        # Dict updates on a single key are atomic under the GIL — no lock needed.
+        state.source_progress[name] = status
+
+    def _worker() -> None:
+        try:
+            searchAllSites(_state.query, quiet_mode=True, progress_callback=_on_progress)
+        finally:
+            state.mode = RESULTS
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+    return thread
+
+
 def run_app() -> None:
     """Entry point for interactive mode. Replaces the old REPL `while` loop."""
     if not sys.stdin.isatty():
@@ -265,13 +362,19 @@ def run_app() -> None:
         )
         return
 
-    # Synchronous fetch for now; a worker-thread + progress strip lands in step 6.
-    searchAllSites(_state.query)
-
     state = _AppState()
+    state.current_verb = random.choice(SEARCH_VERBS)
+    state.verb_set_at = time.monotonic()
+
     with cbreak(), Live(render(state), refresh_per_second=20, screen=True) as live:
+        _kick_off_fetch(state)
         while True:
-            key = read_key()
-            if not handle_key(state, key):
-                break
+            # Poll stdin with timeout so the verb can rotate even with no input.
+            rlist, _w, _x = select.select([sys.stdin], [], [], 0.1)
+            if rlist:
+                key = read_key()
+                if not handle_key(state, key):
+                    break
+            if state.mode == LOADING:
+                _rotate_verb(state)
             live.update(render(state))

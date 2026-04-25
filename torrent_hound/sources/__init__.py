@@ -46,9 +46,19 @@ _SOURCES = [
 _DEFAULT_QUERY = 'ubuntu'
 
 
-def searchAllSites(query=None, force_search=False, quiet_mode=False):
+def searchAllSites(query=None, force_search=False, quiet_mode=False, progress_callback=None):
+    """Fan out across registered sources, with cache + fallback.
+
+    `progress_callback`, if provided, receives `(source_name, status)` where
+    status is one of: "fetching", "cached", "ok:N", "empty". Used by the TUI
+    to render the per-source progress strip during loading.
+    """
     if query is None:
         query = _DEFAULT_QUERY
+
+    def _emit(name, status):
+        if progress_callback is not None:
+            progress_callback(name, status)
 
     if force_search:
         state.results_1337x = None
@@ -72,10 +82,14 @@ def searchAllSites(query=None, force_search=False, quiet_mode=False):
                 fetched_at = _RESULT_CACHE[(_normalize_query(query), name)][0]
                 cache_hits[name] = time.monotonic() - fetched_at
                 source_results[name] = cached
+                _emit(name, "cached")
             else:
                 misses.append((name, fn))
+                _emit(name, "fetching")
     else:
         misses = list(_SOURCES)
+        for name, _ in misses:
+            _emit(name, "fetching")
 
     _print_cache_feedback(cache_hits, [name for name, _ in misses], quiet_mode)
 
@@ -92,6 +106,7 @@ def searchAllSites(query=None, force_search=False, quiet_mode=False):
                 result = fut.result() or []
                 source_results[name] = result
                 _cache_put(query, name, result)
+                _emit(name, f"ok:{len(result)}" if result else "empty")
 
         if not quiet_mode:
             print(colored.green("Done."))
