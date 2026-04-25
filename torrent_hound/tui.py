@@ -33,6 +33,7 @@ from rich.text import Text
 from torrent_hound import state as _state
 from torrent_hound.realdebrid import _cmd_rd
 from torrent_hound.sources import searchAllSites
+from torrent_hound.ui import console as _console
 
 # ── modes ──────────────────────────────────────────────────────────────
 LOADING = "loading"
@@ -333,19 +334,47 @@ def render_header(state: _AppState):
     return Text(f"torrent-hound — '{_state.query}'", style=PALETTE["headline"])
 
 
+def _table_window(state: _AppState, rows: list[dict]) -> tuple[list[dict], int]:
+    """Slice `rows` to fit the current terminal body, centred on the selection.
+
+    Returns (windowed_rows, start_offset). `start_offset` is the index in the
+    full list at which the window begins — used to compute absolute row numbers.
+    """
+    # Body height ≈ terminal height minus reserved chrome:
+    # header (2) + table-header (1) + toast (1) + footer (1) + padding fudge (1).
+    body_height = max(1, _console.size.height - 6)
+    if len(rows) <= body_height:
+        return rows, 0
+    start = state.selected_idx - body_height // 2
+    start = max(0, min(start, len(rows) - body_height))
+    return rows[start:start + body_height], start
+
+
 def render_table(state: _AppState) -> Table:
     rows = _visible_results(state)
-    table = Table(header_style=PALETTE["err"], padding=(0, 1), show_lines=False, expand=True)
-    table.add_column("No", justify="left", width=3)
+    windowed, start = _table_window(state, rows)
+    total = len(rows)
+    suffix = f" (showing {start + 1}-{start + len(windowed)} of {total})" if start > 0 or len(windowed) < total else ""
+    table = Table(
+        title=Text(f"results{suffix}", style=PALETTE["metadata"]) if suffix else None,
+        header_style=PALETTE["err"],
+        padding=(0, 1),
+        show_lines=False,
+        expand=True,
+    )
+    table.add_column("No", justify="left", width=4)
+    table.add_column("Source", justify="left", width=6, style=PALETTE["metadata"])
     table.add_column("Name", justify="left", no_wrap=True)
     table.add_column("Size", justify="right", width=10)
     table.add_column("S", justify="right", width=6)
     table.add_column("L", justify="right", width=5)
     table.add_column("S/L", justify="right", width=5)
-    for i, r in enumerate(rows):
-        style = PALETTE["accent"] if i == state.selected_idx else ""
+    for i, r in enumerate(windowed):
+        absolute_idx = start + i
+        style = PALETTE["accent"] if absolute_idx == state.selected_idx else ""
         table.add_row(
-            str(i + 1),
+            str(absolute_idx + 1),
+            r.get("source", ""),
             re.sub(r'[^\x20-\x7E]', '', r.get("name", ""))[:80],
             r.get("size", ""),
             str(r.get("seeders", "")),

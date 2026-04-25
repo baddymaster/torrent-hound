@@ -111,11 +111,18 @@ def searchAllSites(query=None, force_search=False, quiet_mode=False, progress_ca
         if not quiet_mode:
             print(colored.green("Done."))
 
-    state.results_tpb_condensed = source_results.get('TPB', [])
-    state.results_yts = source_results.get('YTS', [])
-    state.results_eztv = source_results.get('EZTV', [])
-    state.results_1337x = source_results.get('1337x', [])
-    # Flat list for switch() — result numbers span all sources sequentially
+    def _tag(rows, source):
+        # Tag each row with its source so the TUI can show per-row attribution.
+        # Idempotent via setdefault — cached re-runs don't re-tag.
+        for r in rows:
+            r.setdefault('source', source)
+        return rows
+
+    state.results_tpb_condensed = _tag(source_results.get('TPB', []), 'TPB')
+    state.results_yts = _tag(source_results.get('YTS', []), 'YTS')
+    state.results_eztv = _tag(source_results.get('EZTV', []), 'EZTV')
+    state.results_1337x = _tag(source_results.get('1337x', []), '1337x')
+    # Flat list for the TUI — result indices span all sources sequentially
     state.results = (
         state.results_tpb_condensed
         + state.results_yts
