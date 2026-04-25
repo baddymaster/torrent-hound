@@ -43,6 +43,22 @@ RD_WAITING = "rd_waiting"
 HELP = "help"
 
 
+# N3 — palette. One place to tune the entire look. Inline color strings
+# elsewhere should reference these rather than redefining them.
+PALETTE = {
+    "accent":   "bold #ffb84d",   # selected row, primary action
+    "headline": "bold",           # headline / column headers
+    "metadata": "dim",            # secondary info, separators
+    "ok":       "green",          # success markers (toast, source ✓)
+    "warn":     "yellow",         # cache hit, partial state
+    "err":      "red",            # failed source, hard error
+    "blink":    "bold #ffb84d blink",
+}
+
+# N1 — toasts. Auto-dismiss after this many seconds.
+TOAST_TTL_SECONDS = 3.0
+
+
 # Rotating-verb pool, search-phase only. Torrent-themed by design — every
 # phrase maps to something a multi-source torrent search might be doing.
 # RD-phase verbs land in step 8.
@@ -89,6 +105,18 @@ class _AppState:
     # Set when the user requests RD on a row; main loop suspends Live and
     # runs _cmd_rd then clears this. None at rest.
     rd_request_entry: dict | None = None
+    # Wall-clock when toast was set; loop expires after TOAST_TTL_SECONDS.
+    toast_set_at: float = 0.0
+
+
+def _set_toast(state: _AppState, message: str) -> None:
+    state.toast = message
+    state.toast_set_at = time.monotonic()
+
+
+def _expire_toast(state: _AppState) -> None:
+    if state.toast and (time.monotonic() - state.toast_set_at) >= TOAST_TTL_SECONDS:
+        state.toast = None
 
 
 # ── input ──────────────────────────────────────────────────────────────
@@ -209,7 +237,7 @@ def handle_key(state: _AppState, key: str) -> bool:
         elif key in _RESULTS_ACTIONS:
             entry = _selected_entry(state)
             if entry is not None:
-                state.toast = _RESULTS_ACTIONS[key](entry)
+                _set_toast(state, _RESULTS_ACTIONS[key](entry))
         elif key == "r":
             entry = _selected_entry(state)
             if entry is not None:
@@ -232,34 +260,34 @@ def _build_layout() -> Layout:
 
 
 _PROGRESS_GLYPHS = {
-    "fetching": ("⠋", "bold #ffb84d"),
-    "cached":   ("⚡", "yellow"),
-    "empty":    ("·", "dim"),
+    "fetching": ("⠋", PALETTE["accent"]),
+    "cached":   ("⚡", PALETTE["warn"]),
+    "empty":    ("·", PALETTE["metadata"]),
 }
 
 
 def _progress_glyph(status: str) -> tuple[str, str]:
     if status.startswith("ok:"):
-        return ("✓", "green")
-    return _PROGRESS_GLYPHS.get(status, ("?", "dim"))
+        return ("✓", PALETTE["ok"])
+    return _PROGRESS_GLYPHS.get(status, ("?", PALETTE["metadata"]))
 
 
 def _render_progress_strip(state: _AppState) -> Text:
     """One-line summary: 'TPB ⠋  YTS ✓  EZTV ⚡' style."""
     if not state.source_progress:
-        return Text("(starting fetch…)", style="dim")
+        return Text("(starting fetch…)", style=PALETTE["metadata"])
     parts = []
     for name, status in state.source_progress.items():
         glyph, glyph_style = _progress_glyph(status)
-        parts.append((f"{name} ", "bold"))
+        parts.append((f"{name} ", PALETTE["headline"]))
         parts.append((f"{glyph} ", glyph_style))
         if status.startswith("ok:"):
             count = status.split(":", 1)[1]
-            parts.append((f"({count}) ", "dim"))
+            parts.append((f"({count}) ", PALETTE["metadata"]))
         elif status == "cached":
-            parts.append(("(cached) ", "dim"))
+            parts.append(("(cached) ", PALETTE["metadata"]))
         elif status == "empty":
-            parts.append(("(no results) ", "dim"))
+            parts.append(("(no results) ", PALETTE["metadata"]))
     return Text.assemble(*parts)
 
 
@@ -284,41 +312,38 @@ def _summary_line(state: _AppState) -> Text:
     bits.append(f"{state.fetch_elapsed:.1f}s")
     if failed:
         bits.append(f"{', '.join(failed)} empty")
-    return Text("  ·  ".join(bits) + f"  —  '{_state.query}'", style="dim")
+    return Text("  ·  ".join(bits) + f"  —  '{_state.query}'", style=PALETTE["metadata"])
 
 
 def render_header(state: _AppState):
     if state.mode == LOADING:
-        verb = Spinner("dots", text=Text(state.current_verb + "…", style="bold"))
+        verb = Spinner("dots", text=Text(state.current_verb + "…", style=PALETTE["headline"]))
         return Group(_render_progress_strip(state), verb)
     if state.mode == FILTER:
         return Group(
             _summary_line(state),
             Text.assemble(
-                ("Filter: ", "bold"),
-                (f"/{state.filter_text}", "bold #ffb84d"),
-                ("_", "bold #ffb84d blink"),
+                ("Filter: ", PALETTE["headline"]),
+                (f"/{state.filter_text}", PALETTE["accent"]),
+                ("_", PALETTE["blink"]),
             ),
         )
     if state.mode == RESULTS:
         return _summary_line(state)
-    return Text(f"torrent-hound — '{_state.query}'", style="bold")
+    return Text(f"torrent-hound — '{_state.query}'", style=PALETTE["headline"])
 
 
 def render_table(state: _AppState) -> Table:
     rows = _visible_results(state)
-    table = Table(header_style="red", padding=(0, 1), show_lines=False, expand=True)
+    table = Table(header_style=PALETTE["err"], padding=(0, 1), show_lines=False, expand=True)
     table.add_column("No", justify="left", width=3)
     table.add_column("Name", justify="left", no_wrap=True)
     table.add_column("Size", justify="right", width=10)
     table.add_column("S", justify="right", width=6)
     table.add_column("L", justify="right", width=5)
     table.add_column("S/L", justify="right", width=5)
-    if not rows:
-        table.add_row("", "(no results)", "", "", "", "")
-        return table
     for i, r in enumerate(rows):
-        style = "bold #ffb84d" if i == state.selected_idx else ""
+        style = PALETTE["accent"] if i == state.selected_idx else ""
         table.add_row(
             str(i + 1),
             re.sub(r'[^\x20-\x7E]', '', r.get("name", ""))[:80],
@@ -331,12 +356,28 @@ def render_table(state: _AppState) -> Table:
     return table
 
 
+def render_empty_state(state: _AppState) -> Text:
+    """N2 — friendlier message than an empty table."""
+    if not _all_results():
+        return Text(
+            "No scents on that trail. Try broader terms, or add quality (1080p, 720p).",
+            style=PALETTE["metadata"],
+        )
+    # Filter narrowed everything away
+    return Text(
+        f"No matches for '{state.filter_text}'. Esc to clear filter.",
+        style=PALETTE["metadata"],
+    )
+
+
 def render_body(state: _AppState):
+    if not _visible_results(state) and state.mode != LOADING:
+        return render_empty_state(state)
     return render_table(state)
 
 
 def render_toast(state: _AppState) -> Text:
-    return Text(state.toast or "", style="green")
+    return Text(state.toast or "", style=PALETTE["ok"])
 
 
 # Mode-aware footer key hints. M3 from the UX polish spec — the footer
@@ -352,7 +393,7 @@ _FOOTER_HINTS = {
 
 
 def render_footer(state: _AppState) -> Text:
-    return Text(_FOOTER_HINTS.get(state.mode, ""), style="dim")
+    return Text(_FOOTER_HINTS.get(state.mode, ""), style=PALETTE["metadata"])
 
 
 def render(state: _AppState) -> Layout:
@@ -420,6 +461,7 @@ def run_app() -> None:
                 _run_rd_suspended(live, state)
             if state.mode == LOADING:
                 _rotate_verb(state)
+            _expire_toast(state)
             live.update(render(state))
 
 
@@ -445,9 +487,9 @@ def _run_rd_suspended(live: Live, state: _AppState) -> None:
         try:
             _cmd_rd(entry)
         except Exception as e:  # noqa: BLE001 — defence; RD path has many failure modes
-            print(f"Real-Debrid: {e}")
+            print(f"Real-Debrid error: {e}")
         input("\n[press enter to return to torrent-hound]")
-        state.toast = "Real-Debrid action complete"
+        _set_toast(state, "Real-Debrid action complete")
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, saved)
         live.start()
