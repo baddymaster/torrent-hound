@@ -10,15 +10,22 @@ filled in incrementally, one commit per step.
 """
 from __future__ import annotations
 
+import re
 import sys
 import termios
 import tty
+import webbrowser
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
+import pyperclip
 from rich.layout import Layout
 from rich.live import Live
+from rich.table import Table
 from rich.text import Text
+
+from torrent_hound import state as _state
+from torrent_hound.sources import searchAllSites
 
 # ── modes ──────────────────────────────────────────────────────────────
 LOADING = "loading"
@@ -65,13 +72,78 @@ def read_key() -> str:
     }.get(seq, "ESC")
 
 
-def handle_key(state: _AppState, key: str) -> bool:
-    """Mutates state in-place. Returns False to break the event loop.
+# ── action handlers ────────────────────────────────────────────────────
+# Each returns the toast message to surface; rendering is the loop's job.
+def _action_copy(entry) -> str:
+    pyperclip.copy(str(entry["magnet"]))
+    return "Magnet copied to clipboard"
 
-    Mode-specific dispatch lives here; per-mode handlers added in later commits.
-    """
+
+def _action_open_page(entry) -> str:
+    webbrowser.open(entry["link"], new=2)
+    return "Opened torrent page in browser"
+
+
+def _action_send_to_client(entry) -> str:
+    webbrowser.open(entry["magnet"], new=2)
+    return "Magnet sent to default torrent client"
+
+
+def _action_seedr(entry) -> str:
+    pyperclip.copy(str(entry["magnet"]))
+    webbrowser.open("https://www.seedr.cc", new=2)
+    return "Magnet copied + Seedr opened"
+
+
+_RESULTS_ACTIONS = {
+    "c": _action_copy,
+    "\r": _action_copy,
+    "\n": _action_copy,
+    "o": _action_open_page,
+    "d": _action_send_to_client,
+    "s": _action_seedr,
+}
+
+
+# ── helpers ────────────────────────────────────────────────────────────
+def _all_results() -> list[dict]:
+    return _state.results or []
+
+
+def _visible_results(state: _AppState) -> list[dict]:
+    """Filter `_state.results` by `state.filter_text` (substring, case-insensitive)."""
+    rows = _all_results()
+    if not state.filter_text:
+        return rows
+    needle = state.filter_text.lower()
+    return [r for r in rows if needle in r.get("name", "").lower()]
+
+
+def _selected_entry(state: _AppState) -> dict | None:
+    rows = _visible_results(state)
+    if not rows:
+        return None
+    return rows[state.selected_idx]
+
+
+def handle_key(state: _AppState, key: str) -> bool:
+    """Mutates state in-place. Returns False to break the event loop."""
     if key == "q":
         return False
+
+    if state.mode == RESULTS:
+        rows = _visible_results(state)
+        if key == "UP":
+            state.selected_idx = max(0, state.selected_idx - 1)
+        elif key == "DOWN":
+            state.selected_idx = min(max(0, len(rows) - 1), state.selected_idx + 1)
+        elif key in _RESULTS_ACTIONS:
+            entry = _selected_entry(state)
+            if entry is not None:
+                state.toast = _RESULTS_ACTIONS[key](entry)
+        elif key == "r":
+            state.toast = "Real-Debrid integration lands in step 8"
+
     return True
 
 
@@ -88,19 +160,48 @@ def _build_layout() -> Layout:
 
 
 def render_header(state: _AppState) -> Text:
-    return Text("torrent-hound — TUI", style="bold")
+    return Text(f"torrent-hound — '{_state.query}'", style="bold")
 
 
-def render_body(state: _AppState) -> Text:
-    return Text("(results table lands in step 3)", style="dim")
+def render_table(state: _AppState) -> Table:
+    rows = _visible_results(state)
+    table = Table(header_style="red", padding=(0, 1), show_lines=False, expand=True)
+    table.add_column("No", justify="left", width=3)
+    table.add_column("Name", justify="left", no_wrap=True)
+    table.add_column("Size", justify="right", width=10)
+    table.add_column("S", justify="right", width=6)
+    table.add_column("L", justify="right", width=5)
+    table.add_column("S/L", justify="right", width=5)
+    if not rows:
+        table.add_row("", "(no results)", "", "", "", "")
+        return table
+    for i, r in enumerate(rows):
+        style = "bold #ffb84d" if i == state.selected_idx else ""
+        table.add_row(
+            str(i + 1),
+            re.sub(r'[^\x20-\x7E]', '', r.get("name", ""))[:80],
+            r.get("size", ""),
+            str(r.get("seeders", "")),
+            str(r.get("leechers", "")),
+            str(r.get("ratio", "")),
+            style=style,
+        )
+    return table
+
+
+def render_body(state: _AppState):
+    return render_table(state)
 
 
 def render_toast(state: _AppState) -> Text:
-    return Text(state.toast or "")
+    return Text(state.toast or "", style="green")
 
 
 def render_footer(state: _AppState) -> Text:
-    return Text("q quit", style="dim")
+    return Text(
+        "↑↓ move · enter/c copy · o open page · d send to client · s seedr · q quit",
+        style="dim",
+    )
 
 
 def render(state: _AppState) -> Layout:
@@ -123,6 +224,9 @@ def run_app() -> None:
             "Use --quiet or --json for scriptable output."
         )
         return
+
+    # Synchronous fetch for now; a worker-thread + progress strip lands in step 6.
+    searchAllSites(_state.query)
 
     state = _AppState()
     with cbreak(), Live(render(state), refresh_per_second=20, screen=True) as live:

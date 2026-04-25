@@ -46,9 +46,9 @@ from . import (
     cache,  # noqa: F401
     config,  # noqa: F401
     realdebrid,  # noqa: F401
-    repl,  # noqa: F401
     sources,  # noqa: F401
     state,  # noqa: F401
+    tui,  # noqa: F401
     ui,  # noqa: F401
 )
 from . import cli as _cli  # noqa: F401  — `cli` collides with no public name; alias avoids confusion
@@ -101,17 +101,6 @@ from .realdebrid import (  # noqa: F401
     _rd_unrestrict,
     _RdError,
     _strip_ansi,
-)
-from .repl import (  # noqa: F401
-    _NUMERIC_CMDS,
-    _cmd_c,
-    _cmd_cs,
-    _cmd_d,
-    _cmd_m,
-    _cmd_o,
-    _get_entry,
-    print_menu,
-    switch,
 )
 from .sources import _SOURCES, searchAllSites  # noqa: F401
 from .sources.base import _format_bytes, removeAndReplaceSpaces  # noqa: F401
