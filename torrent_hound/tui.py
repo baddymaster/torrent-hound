@@ -82,6 +82,9 @@ class _AppState:
     # Rotating verb shown during LOADING. Swap every ~VERB_ROTATE_SECONDS.
     current_verb: str = "Sniffing the trackers"
     verb_set_at: float = 0.0
+    # Fetch timing for the run-summary line (M5).
+    fetch_started_at: float = 0.0
+    fetch_elapsed: float = 0.0
 
 
 # ── input ──────────────────────────────────────────────────────────────
@@ -253,16 +256,45 @@ def _render_progress_strip(state: _AppState) -> Text:
     return Text.assemble(*parts)
 
 
+def _summary_line(state: _AppState) -> Text:
+    """Run-summary after fetch completes (M5).
+
+    `2 of 3 sources · 47 results · 1.8s · YTS empty` — failed/empty sources
+    are listed at the end; healthy hits are folded into the count.
+    """
+    progress = state.source_progress
+    n_total = len(progress) or 0
+    n_ok = sum(1 for s in progress.values() if s.startswith("ok:") or s == "cached")
+    n_results = len(_all_results())
+    failed = [n for n, s in progress.items() if s == "empty"]
+
+    bits = []
+    if n_ok == n_total:
+        bits.append(f"{n_total} sources")
+    else:
+        bits.append(f"{n_ok} of {n_total} sources")
+    bits.append(f"{n_results} results")
+    bits.append(f"{state.fetch_elapsed:.1f}s")
+    if failed:
+        bits.append(f"{', '.join(failed)} empty")
+    return Text("  ·  ".join(bits) + f"  —  '{_state.query}'", style="dim")
+
+
 def render_header(state: _AppState):
     if state.mode == LOADING:
         verb = Spinner("dots", text=Text(state.current_verb + "…", style="bold"))
         return Group(_render_progress_strip(state), verb)
     if state.mode == FILTER:
-        return Text.assemble(
-            ("torrent-hound — ", "bold"),
-            (f"/{state.filter_text}", "bold #ffb84d"),
-            ("_", "bold #ffb84d blink"),
+        return Group(
+            _summary_line(state),
+            Text.assemble(
+                ("Filter: ", "bold"),
+                (f"/{state.filter_text}", "bold #ffb84d"),
+                ("_", "bold #ffb84d blink"),
+            ),
         )
+    if state.mode == RESULTS:
+        return _summary_line(state)
     return Text(f"torrent-hound — '{_state.query}'", style="bold")
 
 
@@ -344,8 +376,10 @@ def _kick_off_fetch(state: _AppState) -> threading.Thread:
         try:
             searchAllSites(_state.query, quiet_mode=True, progress_callback=_on_progress)
         finally:
+            state.fetch_elapsed = time.monotonic() - state.fetch_started_at
             state.mode = RESULTS
 
+    state.fetch_started_at = time.monotonic()
     thread = threading.Thread(target=_worker, daemon=True)
     thread.start()
     return thread
