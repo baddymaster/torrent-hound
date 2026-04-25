@@ -57,6 +57,16 @@ PALETTE = {
     "blink":    "bold #ffb84d blink",
 }
 
+# Per-source accent colours used by the selected-row header line. Picked to
+# be visibly distant from the amber selection accent so the eye doesn't
+# conflate "selected source name" with "selected row".
+SOURCE_COLOURS = {
+    "TPB":   "deep_sky_blue1",
+    "YTS":   "spring_green2",
+    "EZTV":  "medium_purple1",
+    "1337x": "hot_pink2",
+}
+
 # N1 — toasts. Auto-dismiss after this many seconds.
 TOAST_TTL_SECONDS = 3.0
 
@@ -359,6 +369,27 @@ def _summary_line(state: _AppState) -> Text:
     return Text("  ·  ".join(bits) + f"  —  '{_state.query}'", style=PALETTE["metadata"])
 
 
+def _selected_info_line(state: _AppState) -> Text:
+    """Option D — second header row showing the selected row's source + name.
+
+    Source name is painted in its per-source colour (deep_sky_blue1 / spring_green2 /
+    medium_purple1), deliberately distant from the amber selection accent so the
+    eye doesn't conflate the two.
+    """
+    entry = _selected_entry(state)
+    if entry is None:
+        return Text("(no row selected)", style=PALETTE["metadata"])
+    source = entry.get("source", "?")
+    source_style = SOURCE_COLOURS.get(source, PALETTE["headline"])
+    name = entry.get("name", "")
+    return Text.assemble(
+        ("selected: ", PALETTE["metadata"]),
+        (source, source_style),
+        ("  ·  ", PALETTE["metadata"]),
+        (name, PALETTE["metadata"]),
+    )
+
+
 def render_header(state: _AppState):
     if state.mode == LOADING:
         verb = Spinner("dots", text=Text(state.current_verb + "…", style=PALETTE["headline"]))
@@ -379,7 +410,7 @@ def render_header(state: _AppState):
             ("_", PALETTE["blink"]),
         )
     if state.mode == RESULTS:
-        return _summary_line(state)
+        return Group(_summary_line(state), _selected_info_line(state))
     return Text(f"torrent-hound — '{_state.query}'", style=PALETTE["headline"])
 
 
@@ -430,7 +461,8 @@ def render_table(state: _AppState) -> Table:
         expand=True,
     )
     table.add_column("No", justify="left", width=4)
-    table.add_column("Source", justify="left", width=6, style=PALETTE["metadata"])
+    # Source column intentionally absent — the selected row's source is shown
+    # in the header (Option D). Per-row attribution lives in the header line.
     table.add_column("Name", justify="left", no_wrap=True)
     table.add_column("Size", justify="right", width=10)
     table.add_column("S", justify="right", width=6)
@@ -441,7 +473,6 @@ def render_table(state: _AppState) -> Table:
         style = PALETTE["accent"] if absolute_idx == state.selected_idx else ""
         table.add_row(
             str(absolute_idx + 1),
-            r.get("source", ""),
             re.sub(r'[^\x20-\x7E]', '', r.get("name", ""))[:80],
             r.get("size", ""),
             str(r.get("seeders", "")),
