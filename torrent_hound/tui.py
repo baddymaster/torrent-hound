@@ -256,7 +256,12 @@ def _selected_entry(state: _AppState) -> dict | None:
 
 
 def _handle_filter_key(state: _AppState, key: str) -> bool:
-    """Filter-mode input: build state.filter_text; esc cancels, enter accepts."""
+    """Filter-mode input: build state.filter_text; esc cancels, enter accepts.
+
+    Arrow keys navigate the *currently filtered* results without leaving filter
+    mode — selected_idx is NOT reset on UP/DOWN (only when the filter itself
+    changes). This lets the user type to narrow, then arrow to pick.
+    """
     if key == "ESC":
         state.filter_text = ""
         state.mode = RESULTS
@@ -266,6 +271,13 @@ def _handle_filter_key(state: _AppState, key: str) -> bool:
         state.mode = RESULTS
         state.selected_idx = 0
         state.view_top = 0
+    elif key == "UP":
+        state.selected_idx = max(0, state.selected_idx - 1)
+        _scroll_into_view(state)
+    elif key == "DOWN":
+        rows = _visible_results(state)
+        state.selected_idx = min(max(0, len(rows) - 1), state.selected_idx + 1)
+        _scroll_into_view(state)
     elif key == "\x7f":  # backspace
         state.filter_text = state.filter_text[:-1]
         state.selected_idx = 0
