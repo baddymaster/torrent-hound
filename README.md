@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/baddymaster/torrent-hound/actions/workflows/ci.yml/badge.svg?branch=experimental)](https://github.com/baddymaster/torrent-hound/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/torrent-hound.svg)](https://pypi.org/project/torrent-hound/)
-[![Python versions](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://github.com/baddymaster/torrent-hound/actions/workflows/ci.yml)
+[![Python versions](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://github.com/baddymaster/torrent-hound/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
 A terminal-first torrent search CLI. Type a query, get ranked results from
@@ -36,7 +36,7 @@ All sources are searched in parallel.
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.10+
 - Runtime dependencies: `beautifulsoup4`, `requests`, `pyperclip`, `rich`, `platformdirs`, `tomli_w`, `argcomplete`
 
 ## Install

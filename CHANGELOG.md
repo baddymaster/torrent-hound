@@ -7,6 +7,16 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Package layout: `torrent_hound.py` split into a proper `torrent_hound/`
+  package (cli, repl, ui, state, cache, config, realdebrid, sources/). No
+  behaviour change; cleaner foundation for the v3 TUI rewrite.
+
+### Removed
+- **Python 3.9 support.** Minimum supported Python is now 3.10 (matches the
+  v3.0 baseline; opens the door to modern type-hint syntax in upcoming
+  changes).
+
 ## [2.6.2] - 2026-04-18
 
 - Reordering imports so ruff isort check passes
