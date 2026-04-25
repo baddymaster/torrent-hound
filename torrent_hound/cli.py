@@ -1,4 +1,4 @@
-"""Top-level CLI: argparse wiring, flag dispatch, REPL loop entry."""
+"""Top-level CLI: argparse wiring, flag dispatch, TUI handoff."""
 from __future__ import annotations
 
 import argparse
@@ -14,9 +14,8 @@ from torrent_hound.config import (
     _revoke_rd_token,
     _user_status,
 )
-from torrent_hound.repl import print_menu, switch
 from torrent_hound.sources import searchAllSites
-from torrent_hound.ui import printResultsQuietly, printTopResults
+from torrent_hound.ui import printResultsQuietly
 
 defaultQuery = 'ubuntu'
 
@@ -69,11 +68,7 @@ def main():
         searchAllSites(state.query, quiet_mode=True)
         printResultsQuietly(as_json=args.as_json)
     else:
-        searchAllSites(state.query)
-        printTopResults()
-
-        state.should_exit = False
-        while not state.should_exit:
-            print_menu(1)
-            choice = input("Enter command : ")
-            switch(choice)
+        # Interactive mode: hand off to the TUI. Search, results display,
+        # and the action loop all live inside run_app() now.
+        from torrent_hound.tui import run_app
+        run_app()
