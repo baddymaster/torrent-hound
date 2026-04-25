@@ -12,3 +12,5 @@ build/
 *.egg-info/
 *.spec
 torrent-hound_v1/
+Icon?
+uv.lock
