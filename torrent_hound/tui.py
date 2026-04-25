@@ -74,7 +74,7 @@ TOAST_TTL_SECONDS = 3.0
 # dispatcher waits CHORD_TIMEOUT_SECONDS for an extension. If a complete
 # COMPLETE_CHORDS entry is matched (e.g. "rd"), it dispatches the chord;
 # otherwise the prefix dispatches alone (e.g. "r" → repeat search).
-CHORD_TIMEOUT_SECONDS = 0.25
+CHORD_TIMEOUT_SECONDS = 1
 CHORD_PREFIXES = {"c", "r"}
 COMPLETE_CHORDS = {"c", "cs", "r", "rd"}
 
@@ -163,16 +163,34 @@ def cbreak():
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
+_ESC_PROBE_SECONDS = 0.01
+
+
 def read_key() -> str:
-    """Read one keypress (or escape sequence) from stdin in cbreak mode."""
+    """Read one keypress (or escape sequence) from stdin in cbreak mode.
+
+    A bare ESC press sends only `\\x1b`; an arrow key sends `\\x1b[A` (or B/C/D).
+    We can't blindly `read(2)` after the initial ESC byte — that blocks
+    indefinitely on bare ESC. Instead, probe stdin with a tiny non-blocking
+    select to see if more bytes are coming, and bail out as ESC if not.
+    """
     ch = sys.stdin.read(1)
     if ch != "\x1b":
         return ch
-    seq = sys.stdin.read(2)
+    # Probe for the next byte of an escape sequence
+    if not select.select([sys.stdin], [], [], _ESC_PROBE_SECONDS)[0]:
+        return "ESC"
+    bracket = sys.stdin.read(1)
+    if bracket != "[":
+        # Some other escape variant (Alt+key, etc.). Treat as ESC.
+        return "ESC"
+    if not select.select([sys.stdin], [], [], _ESC_PROBE_SECONDS)[0]:
+        return "ESC"
+    final = sys.stdin.read(1)
     return {
-        "[A": "UP", "[B": "DOWN", "[C": "RIGHT", "[D": "LEFT",
-        "[H": "HOME", "[F": "END",
-    }.get(seq, "ESC")
+        "A": "UP", "B": "DOWN", "C": "RIGHT", "D": "LEFT",
+        "H": "HOME", "F": "END",
+    }.get(final, "ESC")
 
 
 # ── action handlers ────────────────────────────────────────────────────
