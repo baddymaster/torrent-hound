@@ -70,6 +70,14 @@ SOURCE_COLOURS = {
 # N1 — toasts. Auto-dismiss after this many seconds.
 TOAST_TTL_SECONDS = 3.0
 
+# Multi-char (chord) commands. After a CHORD_PREFIX key is pressed, the
+# dispatcher waits CHORD_TIMEOUT_SECONDS for an extension. If a complete
+# COMPLETE_CHORDS entry is matched (e.g. "rd"), it dispatches the chord;
+# otherwise the prefix dispatches alone (e.g. "r" → repeat search).
+CHORD_TIMEOUT_SECONDS = 0.25
+CHORD_PREFIXES = {"c", "r"}
+COMPLETE_CHORDS = {"c", "cs", "r", "rd"}
+
 
 # Rotating-verb pool, search-phase only. Torrent-themed by design — every
 # phrase maps to something a multi-source torrent search might be doing.
@@ -125,6 +133,11 @@ class _AppState:
     # First visible row in the results table. Scrolling only happens when the
     # selection goes off the visible window — like ls/less, not centered.
     view_top: int = 0
+    # Chord-prefix buffer (vim-style). When set, the next key extends or
+    # disambiguates: e.g. `c` → wait → `s` extends to `cs` (seedr); `c` alone
+    # times out to `c` (copy). See CHORD_TIMEOUT_SECONDS / CHORD_PREFIXES.
+    chord_buffer: str = ""
+    chord_started_at: float = 0.0
 
 
 def _set_toast(state: _AppState, message: str) -> None:
@@ -179,12 +192,22 @@ def _action_send_to_client(entry) -> str:
     return "Magnet sent to default torrent client"
 
 
-_RESULTS_ACTIONS = {
-    "c": _action_copy,
+def _action_seedr(entry) -> str:
+    pyperclip.copy(str(entry["magnet"]))
+    webbrowser.open("https://www.seedr.cc", new=2)
+    return "Magnet copied + Seedr opened"
+
+
+# Entry-targeted commands (act on the highlighted row). Includes both single-
+# char and multi-char (chord) commands. Chord prefixes are listed for the
+# dispatcher; CHORD_PREFIXES + COMPLETE_CHORDS up top govern timing.
+_ENTRY_ACTIONS = {
+    "c":  _action_copy,
     "\r": _action_copy,
     "\n": _action_copy,
-    "o": _action_open_page,
-    "d": _action_send_to_client,
+    "cs": _action_seedr,
+    "o":  _action_open_page,
+    "d":  _action_send_to_client,
 }
 
 
@@ -257,47 +280,93 @@ def _handle_search_key(state: _AppState, key: str) -> bool:
     return True
 
 
+def _dispatch_command(state: _AppState, cmd: str) -> bool:
+    """Run one fully-resolved command (single-key or chord). Returns False to quit."""
+    if cmd == "q":
+        return False
+
+    rows = _visible_results(state)
+    if cmd == "UP":
+        state.selected_idx = max(0, state.selected_idx - 1)
+        _scroll_into_view(state)
+    elif cmd == "DOWN":
+        state.selected_idx = min(max(0, len(rows) - 1), state.selected_idx + 1)
+        _scroll_into_view(state)
+    elif cmd == "/":
+        state.mode = FILTER
+        state.filter_text = ""
+        state.selected_idx = 0
+    elif cmd == "s":
+        state.mode = SEARCH
+        state.search_text = ""
+    elif cmd == "r":
+        # Repeat the current search (refetch; failed sources retry).
+        state.source_progress = {}
+        state.refetch_request = True
+        state.mode = LOADING
+    elif cmd == "rd":
+        entry = _selected_entry(state)
+        if entry is not None:
+            # Main loop picks this up, suspends Live, runs _cmd_rd, restarts.
+            state.rd_request_entry = entry
+    elif cmd in _ENTRY_ACTIONS:
+        entry = _selected_entry(state)
+        if entry is not None:
+            _set_toast(state, _ENTRY_ACTIONS[cmd](entry))
+    return True
+
+
+def _flush_chord(state: _AppState) -> bool:
+    """Dispatch any pending chord prefix as a single-char command. Used both
+    on timeout (from the main loop) and when a non-extending key arrives."""
+    cmd = state.chord_buffer
+    state.chord_buffer = ""
+    if cmd:
+        return _dispatch_command(state, cmd)
+    return True
+
+
+def _handle_chord(state: _AppState, key: str) -> bool:
+    """Buffer chord prefixes; dispatch on completion, non-extending key, or ESC.
+
+    Vim-style: pressing `c` enters a 250ms chord window. If `s` arrives, the
+    `cs` chord fires. Any other key dispatches `c` alone first then processes
+    the new key. ESC silently clears the buffer.
+    """
+    # ESC always cancels a pending chord without dispatching it.
+    if state.chord_buffer and key == "ESC":
+        state.chord_buffer = ""
+        return True
+
+    if state.chord_buffer:
+        combined = state.chord_buffer + key
+        if combined in COMPLETE_CHORDS:
+            state.chord_buffer = ""
+            return _dispatch_command(state, combined)
+        # Extension didn't match — flush buffer first, then process key fresh.
+        if not _flush_chord(state):
+            return False
+        # Fall through to handle `key` as a fresh input.
+
+    if key in CHORD_PREFIXES:
+        state.chord_buffer = key
+        state.chord_started_at = time.monotonic()
+        return True
+
+    return _dispatch_command(state, key)
+
+
 def handle_key(state: _AppState, key: str) -> bool:
     """Mutates state in-place. Returns False to break the event loop."""
     if state.mode == FILTER:
         return _handle_filter_key(state, key)
     if state.mode == SEARCH:
         return _handle_search_key(state, key)
-
+    if state.mode == RESULTS:
+        return _handle_chord(state, key)
+    # Other modes ignore keys for now (LOADING / RD_PICKER / RD_WAITING).
     if key == "q":
         return False
-
-    if state.mode == RESULTS:
-        rows = _visible_results(state)
-        if key == "UP":
-            state.selected_idx = max(0, state.selected_idx - 1)
-            _scroll_into_view(state)
-        elif key == "DOWN":
-            state.selected_idx = min(max(0, len(rows) - 1), state.selected_idx + 1)
-            _scroll_into_view(state)
-        elif key == "/":
-            state.mode = FILTER
-            state.filter_text = ""
-            state.selected_idx = 0
-        elif key == "s":
-            # Enter new-search mode (matches old REPL `s` semantics).
-            state.mode = SEARCH
-            state.search_text = ""
-        elif key == "r":
-            # Repeat the current search (refetch; failed sources retry).
-            state.source_progress = {}
-            state.refetch_request = True
-            state.mode = LOADING
-        elif key in _RESULTS_ACTIONS:
-            entry = _selected_entry(state)
-            if entry is not None:
-                _set_toast(state, _RESULTS_ACTIONS[key](entry))
-        elif key == "b":
-            entry = _selected_entry(state)
-            if entry is not None:
-                # Main loop picks this up, suspends Live, runs _cmd_rd, restarts.
-                state.rd_request_entry = entry
-
     return True
 
 
@@ -511,7 +580,7 @@ def render_toast(state: _AppState) -> Text:
 # adapts to the screen the user is on rather than dumping a static legend.
 _FOOTER_HINTS = {
     LOADING:    "q quit",
-    RESULTS:    "↑↓ move · enter/c copy · o open page · d download · b real-debrid · s search · r repeat · / filter · q quit",
+    RESULTS:    "↑↓ move · ⏎/c copy · cs seedr · o open page · d download · r repeat · rd real-debrid · s search · / filter · q quit",
     FILTER:     "type to narrow · enter accept · esc cancel",
     SEARCH:     "type query · enter search · esc cancel",
     RD_PICKER:  "0-9 pick · a all · enter confirm · esc cancel",
@@ -592,6 +661,10 @@ def run_app() -> None:
                 _kick_off_fetch(state)
             if state.mode == LOADING:
                 _rotate_verb(state)
+            # Vim-style chord timeout: if the buffer's been sitting too long,
+            # dispatch the prefix alone so `r`/`c` aren't permanently blocked.
+            if state.chord_buffer and (time.monotonic() - state.chord_started_at) >= CHORD_TIMEOUT_SECONDS:
+                _flush_chord(state)
             _expire_toast(state)
             live.update(render(state))
 
