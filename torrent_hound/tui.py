@@ -112,6 +112,9 @@ class _AppState:
     # SEARCH mode buffer (typed new-query string) and the refetch trigger.
     search_text: str = ""
     refetch_request: bool = False
+    # First visible row in the results table. Scrolling only happens when the
+    # selection goes off the visible window — like ls/less, not centered.
+    view_top: int = 0
 
 
 def _set_toast(state: _AppState, message: str) -> None:
@@ -202,15 +205,19 @@ def _handle_filter_key(state: _AppState, key: str) -> bool:
         state.filter_text = ""
         state.mode = RESULTS
         state.selected_idx = 0
+        state.view_top = 0
     elif key in ("\r", "\n"):
         state.mode = RESULTS
         state.selected_idx = 0
+        state.view_top = 0
     elif key == "\x7f":  # backspace
         state.filter_text = state.filter_text[:-1]
         state.selected_idx = 0
+        state.view_top = 0
     elif len(key) == 1 and key.isprintable():
         state.filter_text += key
         state.selected_idx = 0
+        state.view_top = 0
     return True
 
 
@@ -226,6 +233,7 @@ def _handle_search_key(state: _AppState, key: str) -> bool:
             # Reset for fresh fetch
             state.filter_text = ""
             state.selected_idx = 0
+            state.view_top = 0
             state.search_text = ""
             state.source_progress = {}
             state.refetch_request = True
@@ -253,8 +261,10 @@ def handle_key(state: _AppState, key: str) -> bool:
         rows = _visible_results(state)
         if key == "UP":
             state.selected_idx = max(0, state.selected_idx - 1)
+            _scroll_into_view(state)
         elif key == "DOWN":
             state.selected_idx = min(max(0, len(rows) - 1), state.selected_idx + 1)
+            _scroll_into_view(state)
         elif key == "/":
             state.mode = FILTER
             state.filter_text = ""
@@ -373,27 +383,45 @@ def render_header(state: _AppState):
     return Text(f"torrent-hound — '{_state.query}'", style=PALETTE["headline"])
 
 
-def _table_window(state: _AppState, rows: list[dict]) -> tuple[list[dict], int]:
-    """Slice `rows` to fit the current terminal body, centred on the selection.
+def _visible_row_estimate() -> int:
+    """Rough count of rows the body slot can show, after chrome reserves.
 
-    Returns (windowed_rows, start_offset). `start_offset` is the index in the
-    full list at which the window begins — used to compute absolute row numbers.
+    Rich renders the table inside the body Layout slot; if we slice more rows
+    than fit, rich silently truncates the bottom — and the viewport stops
+    scrolling because our window doesn't shift. Be conservative here; the
+    viewport scrolls on a strict less-than check, so undershooting is safer
+    than overshooting.
     """
-    # Body height ≈ terminal height minus reserved chrome:
-    # header (2) + table-header (1) + toast (1) + footer (1) + padding fudge (1).
-    body_height = max(1, _console.size.height - 6)
-    if len(rows) <= body_height:
-        return rows, 0
-    start = state.selected_idx - body_height // 2
-    start = max(0, min(start, len(rows) - body_height))
-    return rows[start:start + body_height], start
+    # Layout slots: header(2) + toast(1) + footer(1) = 4
+    # Table chrome inside body: top border(1) + header(1) + bottom border(1) = 3
+    # Optional title row (1, only when scrolled) — already accounted for in
+    # `if not first page` adjustments below.
+    return max(1, _console.size.height - 8)
+
+
+def _scroll_into_view(state: _AppState) -> None:
+    """Adjust state.view_top so state.selected_idx is on screen.
+
+    Called from handle_key after selected_idx changes. Mimics ls/less: viewport
+    only shifts when the selection moves off the current window.
+    """
+    visible = _visible_row_estimate()
+    if state.selected_idx < state.view_top:
+        state.view_top = state.selected_idx
+    elif state.selected_idx >= state.view_top + visible:
+        state.view_top = state.selected_idx - visible + 1
+    if state.view_top < 0:
+        state.view_top = 0
 
 
 def render_table(state: _AppState) -> Table:
     rows = _visible_results(state)
-    windowed, start = _table_window(state, rows)
+    visible = _visible_row_estimate()
+    start = max(0, min(state.view_top, max(0, len(rows) - visible)))
+    end = start + visible
+    windowed = rows[start:end]
     total = len(rows)
-    suffix = f" (showing {start + 1}-{start + len(windowed)} of {total})" if start > 0 or len(windowed) < total else ""
+    suffix = f" (showing {start + 1}-{start + len(windowed)} of {total})" if total > visible else ""
     table = Table(
         title=Text(f"results{suffix}", style=PALETTE["metadata"]) if suffix else None,
         header_style=PALETTE["err"],
