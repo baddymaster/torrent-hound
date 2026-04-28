@@ -7,6 +7,17 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **EZTV no longer reports "all mirrors failed" for queries that resolve to
+  an IMDB ID with zero EZTV torrents** (e.g. `kung fu panda` — IMDB has the
+  TV show but EZTV doesn't host any episodes for it). The API responds
+  successfully with `torrents_count: 0`; we now classify that as `empty` and
+  stop probing instead of walking all four mirrors and emitting `failed`.
+  Same class of bug as the TPB and YTS fixes shipped in v3.0.0; this final
+  case slipped through because EZTV's existing `empty` path only covered
+  the no-IMDB-match scenario.
+
 ## [3.0.1] - 2026-04-28
 
 ### Fixed
