@@ -74,11 +74,15 @@ def searchYTS(search_string='', quiet_mode=False, limit=10, timeout=8, progress=
                     if progress:
                         progress({"type": "empty"})
                     return []
-                parsed = _parse_yts_json(data, domain=domain, limit=limit)
+                # Use the post-redirect host so links point to the domain that
+                # actually served us (e.g. yts.lt → yts.bz). Fall back to the
+                # requested domain if r.url is somehow empty.
+                serving_domain = urllib.parse.urlparse(r.url).netloc or domain
+                parsed = _parse_yts_json(data, domain=serving_domain, limit=limit)
                 if parsed:
                     state.yts_url = url
                     if progress:
-                        progress({"type": "ok", "count": len(parsed), "mirror": domain})
+                        progress({"type": "ok", "count": len(parsed), "mirror": serving_domain})
                     return parsed
             # Mirror responded but no parseable results — treat as miss.
             if progress:
