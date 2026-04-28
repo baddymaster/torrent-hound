@@ -44,6 +44,53 @@ def test_parse_yts_json_empty_on_no_movies(th):
     assert th._parse_yts_json({"data": {"movies": []}}) == []
 
 
+def test_extract_yts_quality_pulls_token(th):
+    assert th._extract_yts_quality("the matrix 1080p") == ("the matrix", "1080p")
+    assert th._extract_yts_quality("matrix 720p") == ("matrix", "720p")
+    assert th._extract_yts_quality("matrix 2160p") == ("matrix", "2160p")
+
+
+def test_extract_yts_quality_no_token_when_query_is_plain(th):
+    assert th._extract_yts_quality("the matrix") == ("the matrix", None)
+    assert th._extract_yts_quality("foo bar baz") == ("foo bar baz", None)
+    assert th._extract_yts_quality("") == ("", None)
+
+
+def test_extract_yts_quality_is_case_insensitive(th):
+    # User typing 1080P (or even mixed) should be normalised to YTS's '1080p'.
+    assert th._extract_yts_quality("foo 1080P") == ("foo", "1080p")
+    assert th._extract_yts_quality("FOO 720P") == ("FOO", "720p")
+
+
+def test_extract_yts_quality_normalises_3d_to_canonical(th):
+    # YTS expects literal '3D' on the wire even though we accept lowercase.
+    assert th._extract_yts_quality("foo 3d") == ("foo", "3D")
+    assert th._extract_yts_quality("foo 3D") == ("foo", "3D")
+
+
+def test_extract_yts_quality_handles_multi_token_x265(th):
+    assert th._extract_yts_quality("foo 1080p.x265") == ("foo", "1080p.x265")
+
+
+def test_extract_yts_quality_unknown_quality_left_in_query(th):
+    # Unknown quality tokens (not in YTS's enum) stay in the query so the
+    # API can decide. We don't try to invent a quality that doesn't exist.
+    assert th._extract_yts_quality("matrix 9999p") == ("matrix 9999p", None)
+
+
+def test_parse_yts_json_quality_filter_drops_other_variants(th, yts_interstellar_json):
+    # Without filter: every quality variant for every movie.
+    all_results = th._parse_yts_json(yts_interstellar_json, limit=50)
+    qualities_present = {r["name"].rsplit("[", 1)[1].rstrip("]") for r in all_results}
+    assert len(qualities_present) > 1, "fixture should have multiple quality variants"
+
+    # With quality_filter='1080p': only 1080p rows survive.
+    only_1080p = th._parse_yts_json(yts_interstellar_json, limit=50, quality_filter="1080p")
+    assert len(only_1080p) > 0, "fixture should contain at least one 1080p variant"
+    for r in only_1080p:
+        assert r["name"].endswith("[1080p]"), f"unexpected quality in {r['name']}"
+
+
 def test_build_yts_magnet_format(th):
     magnet = th._build_yts_magnet("ABC123", "Test Movie (2024)")
     assert magnet.startswith("magnet:?xt=urn:btih:ABC123")

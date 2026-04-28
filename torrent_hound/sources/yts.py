@@ -10,6 +10,42 @@ from torrent_hound.ui import colored
 
 YTS_DOMAINS = ['yts.lt', 'yts.am', 'yts.bz', 'yts.gg']
 
+# YTS's `query_term` does substring matching against movie titles only — no
+# inline DSL. Tokens like "1080p" appended to a query won't match any title
+# and silently produce zero results. The dedicated `quality=` API parameter
+# is the right channel for this. We extract recognised quality tokens out of
+# the query and route them to that parameter so users can keep typing
+# fluent queries like "the matrix 1080p" and get expected results.
+# Canonical YTS quality values (case-sensitive on the API side; we normalise
+# user input to these).
+_YTS_QUALITY_VALUES = {
+    '480p': '480p',
+    '720p': '720p',
+    '1080p': '1080p',
+    '1080p.x265': '1080p.x265',
+    '2160p': '2160p',
+    '3d': '3D',
+}
+
+
+def _extract_yts_quality(query):
+    """Pull a YTS-supported quality token out of `query`. Returns
+    `(cleaned_query, quality_param_value_or_None)`. Case-insensitive; first
+    matching token wins (subsequent quality tokens are left in the query
+    untouched, since YTS only accepts one quality at a time)."""
+    if not query:
+        return query, None
+    quality = None
+    kept = []
+    for tok in query.split():
+        norm = tok.lower()
+        if quality is None and norm in _YTS_QUALITY_VALUES:
+            quality = _YTS_QUALITY_VALUES[norm]
+            continue
+        kept.append(tok)
+    return ' '.join(kept), quality
+
+
 YTS_TRACKERS = [
     "udp://open.demonii.com:1337/announce",
     "udp://tracker.opentrackr.org:1337/announce",
@@ -25,8 +61,16 @@ def _build_yts_magnet(info_hash, title):
     return f"magnet:?xt=urn:btih:{info_hash}&dn={dn}&{trackers}"
 
 
-def _parse_yts_json(data, domain='yts.mx', limit=10):
-    """Flatten YTS API response into a list of result dicts (one per quality variant)."""
+def _parse_yts_json(data, domain='yts.mx', limit=10, quality_filter=None):
+    """Flatten YTS API response into a list of result dicts (one per quality variant).
+
+    `quality_filter`, when set, drops torrents whose `quality` doesn't match.
+    The YTS `quality=` API parameter filters which *movies* are returned (a
+    movie qualifies if it has any torrent of that quality), but the response
+    still carries every torrent variant for each matched movie. Without this
+    client-side filter, a user query like "matrix 1080p" still surfaces 720p
+    and 2160p rows alongside the 1080p one they actually asked for.
+    """
     movies = data.get("data", {}).get("movies") or []
     parsed = []
     for movie in movies:
@@ -36,6 +80,8 @@ def _parse_yts_json(data, domain='yts.mx', limit=10):
             # Replace any YTS domain in the URL with the one that actually responded
             movie_url = re.sub(r'https?://[^/]+', f'https://{domain}', movie_url)
         for torrent in movie.get("torrents", []):
+            if quality_filter and torrent.get('quality') != quality_filter:
+                continue
             name = f"{movie.get('title_long', movie.get('title', '?'))} [{torrent['quality']}]"
             seeds = torrent.get("seeds", 0)
             peers = torrent.get("peers", 0)
@@ -59,8 +105,17 @@ def _parse_yts_json(data, domain='yts.mx', limit=10):
 
 def searchYTS(search_string='', quiet_mode=False, limit=10, timeout=8, progress=None):
     """Search YTS, trying known mirrors in order."""
+    clean_query, quality = _extract_yts_quality(search_string)
+    params = [
+        ('query_term', clean_query),
+        ('limit', '20'),
+        ('sort_by', 'seeds'),
+    ]
+    if quality is not None:
+        params.append(('quality', quality))
+    qs = urllib.parse.urlencode(params)
     for domain in YTS_DOMAINS:
-        url = f"https://{domain}/api/v2/list_movies.json?query_term={urllib.parse.quote_plus(search_string)}&limit=20&sort_by=seeds"
+        url = f"https://{domain}/api/v2/list_movies.json?{qs}"
         if progress:
             progress({"type": "mirror_attempt", "mirror": domain})
         try:
@@ -84,7 +139,7 @@ def searchYTS(search_string='', quiet_mode=False, limit=10, timeout=8, progress=
                 # actually served us (e.g. yts.lt → yts.bz). Fall back to the
                 # requested domain if r.url is somehow empty.
                 serving_domain = urllib.parse.urlparse(r.url).netloc or domain
-                parsed = _parse_yts_json(data, domain=serving_domain, limit=limit)
+                parsed = _parse_yts_json(data, domain=serving_domain, limit=limit, quality_filter=quality)
                 if parsed:
                     state.yts_url = url
                     if progress:

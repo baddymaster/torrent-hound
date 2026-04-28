@@ -127,6 +127,7 @@ from .sources.yts import (  # noqa: F401
     YTS_DOMAINS,
     YTS_TRACKERS,
     _build_yts_magnet,
+    _extract_yts_quality,
     _parse_yts_json,
     searchYTS,
 )
