@@ -7,7 +7,7 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added — v3.0 TUI
+### Added
 
 - **Single-screen TUI** built on `rich.live` replaces the old REPL `Enter
   command :` loop. Arrow-key navigation, mode-aware footer, live filter,
@@ -47,6 +47,12 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   {bash,zsh}` instead of `register-python-argcomplete torrent-hound`.
   The latter ships inside the argcomplete dependency and isn't exposed
   on PATH when installed via pipx.
+- **YTS mirror list refresh.** Added `yts.bz` and `yts.gg` (both
+  confirmed official — their JSON responses embed an operator-signed
+  migration notice pointing to `https://movies-api.accel.li/api/v2/`,
+  corroborated by the yts.bz API documentation page). Removed `yts.mx`
+  (DNS no longer resolves) and `yts.rs` (Cloudflare 523 origin
+  unreachable).
 
 ### Removed
 
@@ -83,15 +89,6 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Per-source spinner in the trail line** now animates. The in-flight
   glyph was a static `⠋`; it now rotates through the standard 10-frame
   dots pattern based on monotonic time.
-
-### Changed
-
-- **YTS mirror list refresh.** Added `yts.bz` and `yts.gg` (both
-  confirmed official — their JSON responses embed an operator-signed
-  migration notice pointing to `https://movies-api.accel.li/api/v2/`,
-  corroborated by the yts.bz API documentation page). Removed `yts.mx`
-  (DNS no longer resolves) and `yts.rs` (Cloudflare 523 origin
-  unreachable).
 
 ### Migration notes
 
