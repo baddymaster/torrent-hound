@@ -55,6 +55,25 @@ def test_parse_tpb_html_link_includes_domain(th, tpb_ubuntu_html):
         assert r["link"].startswith("https://"), f"link is not absolute: {r['link']}"
 
 
+def test_tpb_page_is_empty_results_true_for_zero_match_page(th, tpb_no_hits_html):
+    """The captured no-hits page should be classified as a genuine empty
+    result (not a mirror failure) — the searchResult table is present but
+    only contains the header row."""
+    assert th._tpb_page_is_empty_results(tpb_no_hits_html) is True
+
+
+def test_tpb_page_is_empty_results_false_for_real_results_page(th, tpb_ubuntu_html):
+    """A real results page must NOT be classified as empty — table has many rows."""
+    assert th._tpb_page_is_empty_results(tpb_ubuntu_html) is False
+
+
+def test_tpb_page_is_empty_results_false_when_table_missing(th):
+    """A page without the searchResult table at all is a mirror failure
+    (dead/blocked/CAPTCHA), not an empty result — caller will probe the next mirror."""
+    assert th._tpb_page_is_empty_results(b"<html><body>blocked</body></html>") is False
+    assert th._tpb_page_is_empty_results(b"") is False
+
+
 def test_build_results_table_strips_wide_unicode(th):
     """Emoji and wide Unicode in torrent names must be stripped to prevent
     table misalignment."""

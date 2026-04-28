@@ -1,5 +1,4 @@
-"""Pytest bootstrap: load torrent_hound.py as a module under the name `th`."""
-import importlib.util
+"""Pytest bootstrap: expose the torrent_hound package under the name `th`."""
 import json
 import sys
 from pathlib import Path
@@ -7,25 +6,36 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).parent.parent
-SOURCE = ROOT / "torrent_hound.py"
 FIXTURES = Path(__file__).parent / "fixtures"
+
+# Make the package importable without requiring an editable install.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+# Prevent argparse in main() from eating real CLI args during import
+sys.argv = ["torrent-hound", "dummy"]
+
+import torrent_hound as _torrent_hound  # noqa: E402
 
 
 @pytest.fixture(scope="session")
 def th():
-    """Load the torrent-hound script as a module once per test session."""
-    spec = importlib.util.spec_from_file_location("torrent_hound", SOURCE)
-    module = importlib.util.module_from_spec(spec)
-    # Prevent the __main__ block from running during import
-    sys.argv = ["torrent-hound", "dummy"]
-    spec.loader.exec_module(module)
-    return module
+    """The torrent_hound package, re-exporting names from the current
+    migration state (monolith + extracted submodules)."""
+    return _torrent_hound
 
 
 @pytest.fixture
 def tpb_ubuntu_html():
     """Real captured TPB search response for 'ubuntu'."""
     return (FIXTURES / "tpb_search_ubuntu.html").read_bytes()
+
+
+@pytest.fixture
+def tpb_no_hits_html():
+    """Real captured TPB search response for a query with zero matches.
+    The page renders the searchResult table with only its header row."""
+    return (FIXTURES / "tpb_search_no_hits.html").read_bytes()
 
 
 @pytest.fixture

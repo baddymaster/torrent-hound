@@ -7,6 +7,99 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Single-screen TUI** built on `rich.live` replaces the old REPL `Enter
+  command :` loop. Arrow-key navigation, mode-aware footer, live filter,
+  inline Real-Debrid handoff. Quiet/JSON modes (`--quiet`, `--json`)
+  bypass the TUI entirely.
+- **Per-source fetch trail.** Three-row header:
+  - top: rotating verb spinner (during fetch) → run summary (after)
+  - middle: `trail:` line — per-source pip with mirror retry detail and
+    inline timing (`TPB ✓ 10 (180ms) · YTS ✓ 8 (420ms · 1 retry) · EZTV
+    ⚡ 5 cached 3m`)
+  - bottom: `selected: <source> · <name>` of the highlighted row
+- **Multi-character commands** via vim-style chord buffer:
+  - `c` (alone) copy magnet · `cs` copy + open Seedr
+  - `r` (alone) repeat search · `rd` send to Real-Debrid
+  - When a chord prefix is pending, the footer shows the available
+    extensions so the chord-timeout window feels like a menu rather than
+    a freeze.
+- **In-app new search.** `s` enters a new-query prompt; `r` repeats the
+  current search. No more quitting and re-running.
+- **Live filter.** `/` enters filter mode. Type to narrow; arrows still
+  navigate the filtered subset; `⏎` accepts; `Esc` clears.
+- **Live source-progress callbacks.** `searchAllSites(progress_callback=...)`
+  surfaces per-mirror events (`mirror_attempt` / `mirror_failed` / `ok`
+  / `cached` / `failed`) for the TUI's trail.
+- **TUI unit tests.** `tests/test_tui.py` covers `read_key` (all four
+  arrow keys, bare ESC, Alt-letter, unknown CSI) and `handle_key` state
+  transitions across all modes (RESULTS / FILTER / SEARCH / LOADING)
+  including chord buffering and ESC cancellation.
+
+### Changed
+
+- **Package layout.** `torrent_hound.py` split into a proper `torrent_hound/`
+  package (`cli`, `tui`, `state`, `cache`, `config`, `realdebrid`, `ui`,
+  `sources/`). No behaviour change beyond the TUI rewrite; cleaner
+  foundation for future work.
+- **Shell completion** setup now uses `torrent-hound --print-completion
+  {bash,zsh}` instead of `register-python-argcomplete torrent-hound`.
+  The latter ships inside the argcomplete dependency and isn't exposed
+  on PATH when installed via pipx.
+- **YTS mirror list refresh.** Added `yts.bz` and `yts.gg` (both
+  confirmed official — their JSON responses embed an operator-signed
+  migration notice pointing to `https://movies-api.accel.li/api/v2/`,
+  corroborated by the yts.bz API documentation page). Removed `yts.mx`
+  (DNS no longer resolves) and `yts.rs` (Cloudflare 523 origin
+  unreachable).
+
+### Removed
+
+- **REPL.** The interactive `Enter command :` loop (and `repl.py`) are
+  gone. Quiet/JSON output paths are unchanged.
+- **Numeric command prefixes.** `c1`, `m2`, `rd3` etc. no longer exist;
+  the TUI's cursor selects the row and the bare command acts on it.
+- **Python 3.9 support.** Minimum supported Python is 3.10.
+
+### Fixed
+
+- **Sources no longer report "all mirrors failed" for genuine empty
+  results.** Both TPB and YTS were probing every mirror in the chain
+  when the upstream API worked but returned zero matches, then emitting
+  `✗ all mirrors failed` in the trail and a corresponding toast. Now
+  they emit a clean `no results` event after the first responsive
+  mirror — TPB via a structural check on the search-results table
+  (header-only-row signals a successful empty page versus a missing
+  table that signals a dead mirror), YTS via gating on the `movies`
+  array being non-empty (catches both pure-zero queries and the
+  quirkier `movie_count > 0 + missing movies key` shape that e.g.
+  wrong-year queries produce).
+- **YTS inline quality tokens** like `1080p`, `720p`, `2160p`,
+  `1080p.x265`, and `3D` appended to a search query no longer silently
+  return zero. YTS's `query_term` does title-only substring matching,
+  so quality tokens never matched a movie title. We now extract them
+  via `_extract_yts_quality` and route them to YTS's dedicated
+  `?quality=` API parameter, then post-filter the returned torrent
+  variants so the user sees only the requested quality.
+- **YTS movie-page links** now use the post-redirect host. A request
+  to `yts.lt` that 301'd to `yts.bz` was rewriting links with the
+  originally-requested host (a dead mirror); now they use the actual
+  responding host from `r.url`.
+- **Per-source spinner in the trail line** now animates. The in-flight
+  glyph was a static `⠋`; it now rotates through the standard 10-frame
+  dots pattern based on monotonic time.
+
+### Migration notes
+
+- Anyone scripting against `--quiet` / `--json` is unaffected — those
+  paths bypass the TUI.
+- Anyone embedding the package (`import torrent_hound`) keeps the same
+  re-export surface; new modules (`tui`, etc.) sit alongside the existing
+  names.
+- `from torrent_hound.repl import switch` etc. — `repl.py` is gone. The
+  TUI's per-key handlers live in `torrent_hound.tui`.
+
 ## [2.6.2] - 2026-04-18
 
 - Reordering imports so ruff isort check passes
