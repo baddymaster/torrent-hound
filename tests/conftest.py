@@ -32,6 +32,13 @@ def tpb_ubuntu_html():
 
 
 @pytest.fixture
+def tpb_no_hits_html():
+    """Real captured TPB search response for a query with zero matches.
+    The page renders the searchResult table with only its header row."""
+    return (FIXTURES / "tpb_search_no_hits.html").read_bytes()
+
+
+@pytest.fixture
 def yts_interstellar_json():
     """Real captured YTS API response for 'interstellar'."""
     return json.loads((FIXTURES / "yts_search_interstellar.json").read_text())

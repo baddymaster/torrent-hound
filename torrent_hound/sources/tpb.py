@@ -21,6 +21,19 @@ TPB_DOMAINS = [
 ]
 
 
+def _tpb_page_is_empty_results(html) -> bool:
+    """True if `html` is a successfully-served TPB results page that just has
+    zero matches (the searchResult table is present but contains only the
+    header row). Distinguishes from dead/blocked mirrors so the source can
+    emit `empty` (genuine no-results, stop probing) vs `mirror_failed`
+    (table missing, try the next mirror)."""
+    soup = BeautifulSoup(html, 'html.parser')
+    table = soup.find("table", {"id": "searchResult"})
+    if table is None:
+        return False
+    return len(table.find_all("tr")) <= 1
+
+
 def _parse_tpb_html(html, domain='thepiratebay.zone', limit=10):
     """Parse a TPB search-results HTML document. Returns [] if the expected
     results table isn't present (domain is dead / blocked / CAPTCHA)."""
@@ -83,7 +96,15 @@ def searchPirateBayCondensed(search_string=None, quiet_mode=False, limit=10, tim
                 if progress:
                     progress({"type": "ok", "count": len(parsed), "mirror": domain})
                 return parsed
-            # Mirror responded but parser returned nothing — treat as a mirror miss.
+            # Empty parse: distinguish "mirror served us a real no-hits page"
+            # from "mirror is dead / blocked / CAPTCHA". Probing more mirrors
+            # only makes sense for the latter.
+            if _tpb_page_is_empty_results(r.content):
+                state.tpb_working_domain = domain
+                state.results_tpb_condensed = []
+                if progress:
+                    progress({"type": "empty"})
+                return []
             if progress:
                 progress({"type": "mirror_failed", "mirror": domain})
         except requests.RequestException:
