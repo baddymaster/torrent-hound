@@ -67,10 +67,16 @@ def searchYTS(search_string='', quiet_mode=False, limit=10, timeout=8, progress=
             r = requests.get(url, timeout=timeout)
             data = r.json()
             if data.get("status") == "ok":
-                # API says "ok" with zero movies → genuine empty result, not a
-                # mirror failure. Probing more domains won't change the answer
-                # (YTS is movies-only; queries like "ubuntu" naturally return 0).
-                if data.get("data", {}).get("movie_count", 0) == 0:
+                # API responded successfully but has no usable matches → genuine
+                # empty, not a mirror failure. Two shapes both land here:
+                #   movie_count==0 + no `movies` key (e.g. "ubuntu" — no hits)
+                #   movie_count>0 but `movies` array missing/empty (e.g. wrong
+                #     year: "the devil wears prada 2026" pre-counts the 2006
+                #     match then filters it out).
+                # Either way, walking more mirrors can't conjure results;
+                # they all share the same backend.
+                movies = data.get("data", {}).get("movies") or []
+                if not movies:
                     if progress:
                         progress({"type": "empty"})
                     return []
