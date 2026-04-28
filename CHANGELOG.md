@@ -7,6 +7,8 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-04-28
+
 ### Added
 
 - **Single-screen TUI** built on `rich.live` replaces the old REPL `Enter
