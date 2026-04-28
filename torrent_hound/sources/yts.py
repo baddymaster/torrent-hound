@@ -8,7 +8,7 @@ import requests
 from torrent_hound import state
 from torrent_hound.ui import colored
 
-YTS_DOMAINS = ['yts.lt', 'yts.am', 'yts.mx', 'yts.rs', 'yts.bz', 'yts.gg']
+YTS_DOMAINS = ['yts.lt', 'yts.am', 'yts.bz', 'yts.gg']
 
 YTS_TRACKERS = [
     "udp://open.demonii.com:1337/announce",
