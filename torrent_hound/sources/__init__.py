@@ -22,6 +22,7 @@ from torrent_hound.cache import (
     _RESULT_CACHE,
     _cache_get,
     _cache_put,
+    _format_age,
     _normalize_query,
     _print_cache_feedback,
 )
@@ -49,16 +50,33 @@ _DEFAULT_QUERY = 'ubuntu'
 def searchAllSites(query=None, force_search=False, quiet_mode=False, progress_callback=None):
     """Fan out across registered sources, with cache + fallback.
 
-    `progress_callback`, if provided, receives `(source_name, status)` where
-    status is one of: "fetching", "cached", "ok:N", "empty". Used by the TUI
-    to render the per-source progress strip during loading.
+    `progress_callback`, if provided, is `callable(source_name, event)` where
+    `event` is a dict carrying one of these `type`s:
+
+      {"type": "start"}
+          fetch of this source has begun (no mirror tried yet)
+      {"type": "mirror_attempt", "mirror": "..."}
+          source is now trying this mirror
+      {"type": "mirror_failed", "mirror": "..."}
+          mirror failed; source will move to the next
+      {"type": "ok", "count": N, "elapsed_ms": T, "mirror": "..."}
+          source returned N results from this mirror in T ms
+      {"type": "empty", "elapsed_ms": T}
+          mirrors responded but no results
+      {"type": "failed", "elapsed_ms": T}
+          all mirrors exhausted / unreachable
+      {"type": "cached", "count": N, "age": "3m"}
+          served from cache (no network); only emitted by searchAllSites itself
+
+    Sources emit start / mirror_* / ok / empty / failed; searchAllSites
+    emits `cached` for cache hits.
     """
     if query is None:
         query = _DEFAULT_QUERY
 
-    def _emit(name, status):
+    def _emit(name, event):
         if progress_callback is not None:
-            progress_callback(name, status)
+            progress_callback(name, event)
 
     if force_search:
         state.results_1337x = None
@@ -80,33 +98,45 @@ def searchAllSites(query=None, force_search=False, quiet_mode=False, progress_ca
             cached = _cache_get(query, name)
             if cached is not None:
                 fetched_at = _RESULT_CACHE[(_normalize_query(query), name)][0]
-                cache_hits[name] = time.monotonic() - fetched_at
+                age_seconds = time.monotonic() - fetched_at
+                cache_hits[name] = age_seconds
                 source_results[name] = cached
-                _emit(name, "cached")
+                _emit(name, {"type": "cached", "count": len(cached), "age": _format_age(age_seconds)})
             else:
                 misses.append((name, fn))
-                _emit(name, "fetching")
     else:
         misses = list(_SOURCES)
-        for name, _ in misses:
-            _emit(name, "fetching")
 
     _print_cache_feedback(cache_hits, [name for name, _ in misses], quiet_mode)
 
-    # Fetch phase: only sources that missed.
+    # Fetch phase: only sources that missed. Each source gets a per-source
+    # progress closure that prefills elapsed_ms when the source forgot to.
     if misses:
         if not quiet_mode and not cache_hits:
-            # All-miss case — emit the original "Searching ..." message.
             miss_names = ", ".join(name for name, _ in misses)
             print(colored.magenta(f"Searching {miss_names}...\n"), end='')
 
+        def _per_source_progress(name, started_at):
+            def emit(event):
+                # Sources can omit elapsed_ms on terminal events; fill it in here
+                # so they don't all need to thread time.monotonic() through.
+                if event.get("type") in ("ok", "empty", "failed") and "elapsed_ms" not in event:
+                    event["elapsed_ms"] = int((time.monotonic() - started_at) * 1000)
+                _emit(name, event)
+            return emit
+
         with ThreadPoolExecutor(max_workers=max(1, len(misses))) as pool:
-            futures = {name: pool.submit(fn, query, quiet_mode) for name, fn in misses}
+            started = {name: time.monotonic() for name, _ in misses}
+            for name, _ in misses:
+                _emit(name, {"type": "start"})
+            futures = {
+                name: pool.submit(fn, query, quiet_mode, progress=_per_source_progress(name, started[name]))
+                for name, fn in misses
+            }
             for name, fut in futures.items():
                 result = fut.result() or []
                 source_results[name] = result
                 _cache_put(query, name, result)
-                _emit(name, f"ok:{len(result)}" if result else "empty")
 
         if not quiet_mode:
             print(colored.green("Done."))

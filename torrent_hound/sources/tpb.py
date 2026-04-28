@@ -56,9 +56,13 @@ def _parse_tpb_html(html, domain='thepiratebay.zone', limit=10):
     return parsed
 
 
-def searchPirateBayCondensed(search_string=None, quiet_mode=False, limit=10, timeout=8):
+def searchPirateBayCondensed(search_string=None, quiet_mode=False, limit=10, timeout=8, progress=None):
     """Search TPB, trying known mirrors in order until one returns results.
-    On success, remembers the working domain for subsequent calls in this run."""
+    On success, remembers the working domain for subsequent calls in this run.
+
+    `progress`, if provided, receives `mirror_attempt`/`mirror_failed`/`ok`/
+    `failed` events for the TUI's source-trail display.
+    """
     if search_string is None:
         search_string = _DEFAULT_QUERY
 
@@ -68,6 +72,8 @@ def searchPirateBayCondensed(search_string=None, quiet_mode=False, limit=10, tim
 
     for domain in domains_to_try:
         url = f'https://{domain}/s/?q={removeAndReplaceSpaces(search_string)}&page=0&orderby=99'
+        if progress:
+            progress({"type": "mirror_attempt", "mirror": domain})
         try:
             r = requests.get(url, headers=headers, timeout=timeout)
             parsed = _parse_tpb_html(r.content, domain=domain, limit=limit)
@@ -75,11 +81,20 @@ def searchPirateBayCondensed(search_string=None, quiet_mode=False, limit=10, tim
                 state.tpb_working_domain = domain
                 state.tpb_url = url
                 state.results_tpb_condensed = parsed
+                if progress:
+                    progress({"type": "ok", "count": len(parsed), "mirror": domain})
                 return parsed
+            # Mirror responded but parser returned nothing — treat as a mirror miss.
+            if progress:
+                progress({"type": "mirror_failed", "mirror": domain})
         except requests.RequestException:
-            continue  # try next mirror
+            if progress:
+                progress({"type": "mirror_failed", "mirror": domain})
+            continue
 
     if not quiet_mode:
         print(colored.magenta("[PirateBay] Error : All known mirrors returned no results or were unreachable"))
     state.results_tpb_condensed = []
+    if progress:
+        progress({"type": "failed"})
     return state.results_tpb_condensed

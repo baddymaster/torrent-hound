@@ -107,7 +107,7 @@ def _parse_eztv_json(torrents, domain='eztvx.to', season=None, episode=None, fil
     return parsed
 
 
-def searchEZTV(search_string='', quiet_mode=False, limit=10, timeout=8):
+def searchEZTV(search_string='', quiet_mode=False, limit=10, timeout=8, progress=None):
     """Search EZTV for TV shows via IMDB ID bridge + optional episode/quality filtering."""
     clean_query, season, episode, filters = _parse_episode_query(search_string)
 
@@ -115,12 +115,16 @@ def searchEZTV(search_string='', quiet_mode=False, limit=10, timeout=8):
     if not imdb_id:
         if not quiet_mode:
             print(colored.magenta("[EZTV] No matching TV show found on IMDB"))
+        if progress:
+            progress({"type": "empty"})
         return []
 
     # Fetch from EZTV, paginating if needed, with domain fallback
     all_torrents = []
     working_domain = EZTV_DOMAINS[0]
     for domain in EZTV_DOMAINS:
+        if progress:
+            progress({"type": "mirror_attempt", "mirror": domain})
         try:
             for page in range(1, 4):  # up to 300 episodes
                 url = f"https://{domain}/api/get-torrents?imdb_id={imdb_id}&limit=100&page={page}"
@@ -136,13 +140,20 @@ def searchEZTV(search_string='', quiet_mode=False, limit=10, timeout=8):
                 working_domain = domain
                 state.eztv_url = f"https://{domain}/api/get-torrents?imdb_id={imdb_id}"
                 break
+            # Mirror responded but no torrents — treat as miss and try next.
+            if progress:
+                progress({"type": "mirror_failed", "mirror": domain})
         except (requests.RequestException, ValueError):
             all_torrents = []
+            if progress:
+                progress({"type": "mirror_failed", "mirror": domain})
             continue
 
     if not all_torrents:
         if not quiet_mode:
             print(colored.magenta("[EZTV] Error : All known mirrors unreachable or no results"))
+        if progress:
+            progress({"type": "failed"})
         return []
 
     parsed = _parse_eztv_json(all_torrents, domain=working_domain, season=season, episode=episode, filters=filters, limit=limit)
@@ -156,5 +167,11 @@ def searchEZTV(search_string='', quiet_mode=False, limit=10, timeout=8):
         if filters:
             filter_desc += f" {' '.join(filters)}"
         print(colored.yellow(f"[EZTV] No results matching{filter_desc} ({len(all_torrents)} total for this show)"))
+
+    if progress:
+        if parsed:
+            progress({"type": "ok", "count": len(parsed), "mirror": working_domain})
+        else:
+            progress({"type": "empty"})
 
     return parsed

@@ -58,10 +58,12 @@ def _parse_yts_json(data, domain='yts.mx', limit=10):
     return parsed
 
 
-def searchYTS(search_string='', quiet_mode=False, limit=10, timeout=8):
+def searchYTS(search_string='', quiet_mode=False, limit=10, timeout=8, progress=None):
     """Search YTS, trying known mirrors in order."""
     for domain in YTS_DOMAINS:
         url = f"https://{domain}/api/v2/list_movies.json?query_term={urllib.parse.quote_plus(search_string)}&limit=20&sort_by=seeds"
+        if progress:
+            progress({"type": "mirror_attempt", "mirror": domain})
         try:
             r = requests.get(url, timeout=timeout)
             data = r.json()
@@ -69,9 +71,18 @@ def searchYTS(search_string='', quiet_mode=False, limit=10, timeout=8):
                 parsed = _parse_yts_json(data, domain=domain, limit=limit)
                 if parsed:
                     state.yts_url = url
+                    if progress:
+                        progress({"type": "ok", "count": len(parsed), "mirror": domain})
                     return parsed
+            # Mirror responded but no parseable results — treat as miss.
+            if progress:
+                progress({"type": "mirror_failed", "mirror": domain})
         except (requests.RequestException, ValueError):
+            if progress:
+                progress({"type": "mirror_failed", "mirror": domain})
             continue
     if not quiet_mode:
         print(colored.magenta("[YTS] Error : All known mirrors returned no results or were unreachable"))
+    if progress:
+        progress({"type": "failed"})
     return []

@@ -108,15 +108,59 @@ VERB_ROTATE_SECONDS = 2.0
 
 
 @dataclass
+class _SourceStatus:
+    """Per-source state that drives the trail line. Populated by callback
+    events from `searchAllSites`."""
+    name: str
+    in_flight: bool = True
+    current_mirror: str = ""
+    failed_mirrors_count: int = 0
+    final_state: str | None = None  # "ok" | "cached" | "failed" | "empty"
+    result_count: int = 0
+    elapsed_ms: int = 0
+    cache_age: str = ""
+
+    def apply(self, event: dict) -> None:
+        et = event.get("type")
+        if et == "start":
+            self.in_flight = True
+        elif et == "mirror_attempt":
+            self.in_flight = True
+            self.current_mirror = event.get("mirror", "")
+        elif et == "mirror_failed":
+            self.failed_mirrors_count += 1
+        elif et == "ok":
+            self.in_flight = False
+            self.final_state = "ok"
+            self.result_count = event.get("count", 0)
+            self.elapsed_ms = event.get("elapsed_ms", 0)
+            if event.get("mirror"):
+                self.current_mirror = event["mirror"]
+        elif et == "cached":
+            self.in_flight = False
+            self.final_state = "cached"
+            self.result_count = event.get("count", 0)
+            self.cache_age = event.get("age", "")
+        elif et == "failed":
+            self.in_flight = False
+            self.final_state = "failed"
+            self.elapsed_ms = event.get("elapsed_ms", 0)
+        elif et == "empty":
+            self.in_flight = False
+            self.final_state = "empty"
+            self.elapsed_ms = event.get("elapsed_ms", 0)
+
+
+@dataclass
 class _AppState:
     """All TUI state in one place. Render is a pure function of this."""
     mode: str = LOADING
     selected_idx: int = 0
     filter_text: str = ""
     toast: str | None = None
-    # Per-source progress: {source_name: status_string}.
-    # Status: "fetching" | "cached" | "ok:N" | "empty".
-    source_progress: dict = field(default_factory=dict)
+    # Per-source rich status: {source_name: _SourceStatus}. Insertion order
+    # determines display order in the trail line.
+    source_status: dict = field(default_factory=dict)
     # Rotating verb shown during LOADING. Swap every ~VERB_ROTATE_SECONDS.
     current_verb: str = "Sniffing the trackers"
     verb_set_at: float = 0.0
@@ -409,7 +453,7 @@ def handle_key(state: _AppState, key: str) -> bool:
 def _build_layout() -> Layout:
     layout = Layout()
     layout.split_column(
-        Layout(name="header", size=2),
+        Layout(name="header", size=3),
         Layout(name="body"),
         Layout(name="toast", size=1),
         Layout(name="footer", size=1),
@@ -417,49 +461,65 @@ def _build_layout() -> Layout:
     return layout
 
 
-_PROGRESS_GLYPHS = {
-    "fetching": ("⠋", PALETTE["accent"]),
-    "cached":   ("⚡", PALETTE["warn"]),
-    "empty":    ("·", PALETTE["metadata"]),
-}
+def render_trail(state: _AppState) -> Text:
+    """Single-line per-source trail with mirror retry + timing detail.
 
-
-def _progress_glyph(status: str) -> tuple[str, str]:
-    if status.startswith("ok:"):
-        return ("✓", PALETTE["ok"])
-    return _PROGRESS_GLYPHS.get(status, ("?", PALETTE["metadata"]))
-
-
-def _render_progress_strip(state: _AppState) -> Text:
-    """One-line summary: 'TPB ⠋  YTS ✓  EZTV ⚡' style."""
-    if not state.source_progress:
+    In-flight examples:
+        TPB ⠋
+        YTS ⠋ retry yts.am
+    Final examples:
+        TPB ✓ 10 (180ms)
+        YTS ✓ 8 (420ms · 1 retry)
+        EZTV ⚡ 5 cached 3m
+        EZTV ✗ all mirrors failed (300ms)
+    Persists in the header both during loading and after results render.
+    """
+    if not state.source_status:
         return Text("(starting fetch…)", style=PALETTE["metadata"])
-    parts = []
-    for name, status in state.source_progress.items():
-        glyph, glyph_style = _progress_glyph(status)
-        parts.append((f"{name} ", PALETTE["headline"]))
-        parts.append((f"{glyph} ", glyph_style))
-        if status.startswith("ok:"):
-            count = status.split(":", 1)[1]
-            parts.append((f"({count}) ", PALETTE["metadata"]))
-        elif status == "cached":
-            parts.append(("(cached) ", PALETTE["metadata"]))
-        elif status == "empty":
-            parts.append(("(no results) ", PALETTE["metadata"]))
+    parts = [("trail: ", PALETTE["metadata"])]
+    statuses = list(state.source_status.values())
+    for i, s in enumerate(statuses):
+        if i:
+            parts.append(("  ·  ", PALETTE["metadata"]))
+        parts.append((s.name, PALETTE["headline"]))
+        parts.append((" ", ""))
+
+        if s.in_flight:
+            parts.append(("⠋", PALETTE["accent"]))
+            if s.failed_mirrors_count:
+                parts.append((f" retry {s.current_mirror}", PALETTE["metadata"]))
+        elif s.final_state == "ok":
+            parts.append(("✓ ", PALETTE["ok"]))
+            parts.append((str(s.result_count), PALETTE["headline"]))
+            timing = f" ({s.elapsed_ms}ms"
+            if s.failed_mirrors_count:
+                timing += f" · {s.failed_mirrors_count} retry"
+            timing += ")"
+            parts.append((timing, PALETTE["metadata"]))
+        elif s.final_state == "cached":
+            parts.append(("⚡ ", PALETTE["warn"]))
+            parts.append((str(s.result_count), PALETTE["headline"]))
+            parts.append((f" cached {s.cache_age}", PALETTE["metadata"]))
+        elif s.final_state == "failed":
+            parts.append(("✗ ", PALETTE["err"]))
+            parts.append(("all mirrors failed", PALETTE["err"]))
+            parts.append((f" ({s.elapsed_ms}ms)", PALETTE["metadata"]))
+        elif s.final_state == "empty":
+            parts.append(("· no results", PALETTE["metadata"]))
+            parts.append((f" ({s.elapsed_ms}ms)", PALETTE["metadata"]))
     return Text.assemble(*parts)
 
 
 def _summary_line(state: _AppState) -> Text:
-    """Run-summary after fetch completes (M5).
+    """Run-summary after fetch completes — top header row.
 
-    `2 of 3 sources · 47 results · 1.8s · YTS empty` — failed/empty sources
-    are listed at the end; healthy hits are folded into the count.
+    `2 of 3 sources · 47 results · 1.8s — 'ubuntu'` style. Failure detail is
+    surfaced in the trail line below, not duplicated here.
     """
-    progress = state.source_progress
-    n_total = len(progress) or 0
-    n_ok = sum(1 for s in progress.values() if s.startswith("ok:") or s == "cached")
+    statuses = list(state.source_status.values())
+    n_total = len(statuses) or 0
+    n_ok = sum(1 for s in statuses if s.final_state in ("ok", "cached"))
     n_results = len(_all_results())
-    failed = [n for n, s in progress.items() if s == "empty"]
 
     bits = []
     if n_ok == n_total:
@@ -468,8 +528,6 @@ def _summary_line(state: _AppState) -> Text:
         bits.append(f"{n_ok} of {n_total} sources")
     bits.append(f"{n_results} results")
     bits.append(f"{state.fetch_elapsed:.1f}s")
-    if failed:
-        bits.append(f"{', '.join(failed)} empty")
     return Text("  ·  ".join(bits) + f"  —  '{_state.query}'", style=PALETTE["metadata"])
 
 
@@ -495,12 +553,20 @@ def _selected_info_line(state: _AppState) -> Text:
 
 
 def render_header(state: _AppState):
+    """Three-row header.
+
+    LOADING:  verb spinner   ·  trail (in-flight)        ·  (blank)
+    RESULTS:  summary line   ·  trail (final + timing)   ·  selected: <src> · <name>
+    FILTER:   summary line   ·  trail                     ·  Filter: /text_
+    SEARCH:   blank          ·  blank                     ·  New search: text_
+    """
     if state.mode == LOADING:
         verb = Spinner("dots", text=Text(state.current_verb + "…", style=PALETTE["headline"]))
-        return Group(_render_progress_strip(state), verb)
+        return Group(verb, render_trail(state), Text(""))
     if state.mode == FILTER:
         return Group(
             _summary_line(state),
+            render_trail(state),
             Text.assemble(
                 ("Filter: ", PALETTE["headline"]),
                 (f"/{state.filter_text}", PALETTE["accent"]),
@@ -508,14 +574,18 @@ def render_header(state: _AppState):
             ),
         )
     if state.mode == SEARCH:
-        return Text.assemble(
-            ("New search: ", PALETTE["headline"]),
-            (state.search_text, PALETTE["accent"]),
-            ("_", PALETTE["blink"]),
+        return Group(
+            Text(""),
+            Text(""),
+            Text.assemble(
+                ("New search: ", PALETTE["headline"]),
+                (state.search_text, PALETTE["accent"]),
+                ("_", PALETTE["blink"]),
+            ),
         )
     if state.mode == RESULTS:
-        return Group(_summary_line(state), _selected_info_line(state))
-    return Text(f"torrent-hound — '{_state.query}'", style=PALETTE["headline"])
+        return Group(_summary_line(state), render_trail(state), _selected_info_line(state))
+    return Group(Text(f"torrent-hound — '{_state.query}'", style=PALETTE["headline"]), Text(""), Text(""))
 
 
 def _visible_row_estimate() -> int:
@@ -527,11 +597,11 @@ def _visible_row_estimate() -> int:
     viewport scrolls on a strict less-than check, so undershooting is safer
     than overshooting.
     """
-    # Layout slots: header(2) + toast(1) + footer(1) = 4
+    # Layout slots: header(3) + toast(1) + footer(1) = 5
     # Table chrome inside body: top border(1) + header(1) + bottom border(1) = 3
     # Optional title row (1, only when scrolled) — already accounted for in
     # `if not first page` adjustments below.
-    return max(1, _console.size.height - 8)
+    return max(1, _console.size.height - 9)
 
 
 def _scroll_into_view(state: _AppState) -> None:
@@ -648,9 +718,13 @@ def _rotate_verb(state: _AppState) -> None:
 
 def _kick_off_fetch(state: _AppState) -> threading.Thread:
     """Launch searchAllSites in a worker; flip mode to RESULTS when done."""
-    def _on_progress(name: str, status: str) -> None:
-        # Dict updates on a single key are atomic under the GIL — no lock needed.
-        state.source_progress[name] = status
+    def _on_progress(name: str, event: dict) -> None:
+        # Dict get-or-create + apply: under the GIL each step is atomic.
+        status = state.source_status.get(name)
+        if status is None:
+            status = _SourceStatus(name=name)
+            state.source_status[name] = status
+        status.apply(event)
 
     def _worker() -> None:
         try:
@@ -660,6 +734,7 @@ def _kick_off_fetch(state: _AppState) -> threading.Thread:
             state.mode = RESULTS
 
     state.fetch_started_at = time.monotonic()
+    state.source_status = {}
     thread = threading.Thread(target=_worker, daemon=True)
     thread.start()
     return thread

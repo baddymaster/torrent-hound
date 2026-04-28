@@ -32,7 +32,7 @@ def extract_magnet_link_1337x(url):
         return None
 
 
-def search1337x(search_string=None, domain='1337x.to', quiet_mode=False, limit=10):
+def search1337x(search_string=None, domain='1337x.to', quiet_mode=False, limit=10, progress=None):  # noqa: ARG001  — keyword reserved for the source-trail callback; dormant source doesn't emit yet
     if search_string is None:
         search_string = _DEFAULT_QUERY
 
