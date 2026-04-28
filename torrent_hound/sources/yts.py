@@ -67,6 +67,13 @@ def searchYTS(search_string='', quiet_mode=False, limit=10, timeout=8, progress=
             r = requests.get(url, timeout=timeout)
             data = r.json()
             if data.get("status") == "ok":
+                # API says "ok" with zero movies → genuine empty result, not a
+                # mirror failure. Probing more domains won't change the answer
+                # (YTS is movies-only; queries like "ubuntu" naturally return 0).
+                if data.get("data", {}).get("movie_count", 0) == 0:
+                    if progress:
+                        progress({"type": "empty"})
+                    return []
                 parsed = _parse_yts_json(data, domain=domain, limit=limit)
                 if parsed:
                     state.yts_url = url
