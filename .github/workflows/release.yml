@@ -28,7 +28,7 @@ jobs:
         run: pip install -e . && pip install pyinstaller
 
       - name: Build standalone binary
-        run: pyinstaller --onefile --name ${{ matrix.artifact }} torrent_hound.py
+        run: pyinstaller --onefile --name ${{ matrix.artifact }} torrent_hound/__main__.py
 
       - uses: actions/upload-artifact@v6
         with:
