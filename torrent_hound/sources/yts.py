@@ -1,5 +1,4 @@
 """YTS source: movies only, JSON API, no scraping."""
-from __future__ import annotations
 
 import re
 import urllib.parse

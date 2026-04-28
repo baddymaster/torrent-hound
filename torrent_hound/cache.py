@@ -4,7 +4,6 @@ Populated by `searchAllSites` on successful fetches, checked on subsequent
 calls. Keyed by (normalized_query, source_name). TTL-enforced at read time
 via `time.monotonic()` — immune to wall-clock changes.
 """
-from __future__ import annotations
 
 import time
 

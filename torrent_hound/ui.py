@@ -5,7 +5,6 @@ Reads state from `torrent_hound.state` for the cross-source aggregation
 helpers. No state writes here — UI is read-only against the cache /
 search results that `sources.searchAllSites` populates.
 """
-from __future__ import annotations
 
 import json
 import re

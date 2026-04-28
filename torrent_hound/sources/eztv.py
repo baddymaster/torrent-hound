@@ -1,5 +1,4 @@
 """EZTV source: TV shows via IMDB ID bridge, JSON API, episode/quality filtering."""
-from __future__ import annotations
 
 import re
 

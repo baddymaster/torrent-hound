@@ -9,7 +9,6 @@ dispatch (clipboard / print / browser / Downie).
 `_cmd_rd` is the user-facing entry: looks up token + action from config,
 then walks the submit/poll/dispatch flow.
 """
-from __future__ import annotations
 
 import base64
 import re

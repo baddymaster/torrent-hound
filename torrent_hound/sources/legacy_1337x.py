@@ -12,7 +12,6 @@ in `extract_magnet_link_1337x` predates the CF rollout and is left for
 parity with the old code path. Replace with whatever evades CF when the
 landscape changes.
 """
-from __future__ import annotations
 
 import requests
 from bs4 import BeautifulSoup

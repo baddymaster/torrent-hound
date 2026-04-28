@@ -11,7 +11,6 @@ acts as if no config exists.
 Functions that talk to Real-Debrid (`_revoke_rd_token`, `_user_status`)
 import RD helpers lazily — see notes inside each function.
 """
-from __future__ import annotations
 
 import getpass
 import os

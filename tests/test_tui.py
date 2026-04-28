@@ -8,7 +8,6 @@ Why the tests exist: the read_key path has been bitten three times during
 development (timing window too tight, Python TextIOWrapper buffering, missing
 arrow handling in filter mode). These tests pin all of those down.
 """
-from __future__ import annotations
 
 from collections import deque
 from contextlib import contextmanager

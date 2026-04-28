@@ -12,7 +12,6 @@ sources, and writes results back to module-level state that the REPL and
 UI layers read. State still lives on the `torrent_hound` package itself
 during the migration — moves to `torrent_hound.state` in a later commit.
 """
-from __future__ import annotations
 
 import time
 from concurrent.futures import ThreadPoolExecutor

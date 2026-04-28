@@ -21,7 +21,6 @@ Architecture overview
 * The persistent `_AppState._verb_spinner` instance is critical — see
   the field's comment for why we can't recreate it per render.
 """
-from __future__ import annotations
 
 import os
 import random

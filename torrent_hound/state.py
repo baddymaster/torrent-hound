@@ -12,7 +12,6 @@ Conventions:
 * Per-session URLs (`tpb_url` etc.) are diagnostic — last URL fetched per
   source. Not part of the user-facing result data.
 """
-from __future__ import annotations
 
 # Populated by searchAllSites + _build_results_table; read by switch,
 # _get_entry, printResultsQuietly, prettyPrintCombinedTopResults.

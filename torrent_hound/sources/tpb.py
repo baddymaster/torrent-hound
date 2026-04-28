@@ -1,5 +1,4 @@
 """The Pirate Bay source: multi-domain fallback + HTML parser."""
-from __future__ import annotations
 
 import requests
 from bs4 import BeautifulSoup

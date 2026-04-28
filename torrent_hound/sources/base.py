@@ -4,7 +4,6 @@
 `(search_string, quiet_mode)` and return a `list[Result]` implicitly match
 it without any declaration or subclassing. Keeps the split minimal.
 """
-from __future__ import annotations
 
 from typing import Protocol, TypedDict
 
