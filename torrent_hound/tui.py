@@ -40,6 +40,7 @@ import pyperclip
 from rich.console import Group
 from rich.layout import Layout
 from rich.live import Live
+from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
@@ -54,6 +55,7 @@ LOADING = "loading"
 RESULTS = "results"
 FILTER = "filter"
 SEARCH = "search"      # new-query prompt
+MAGNET_VIEW = "magnet_view"  # full magnet displayed in the body, any key returns
 RD_PICKER = "rd_picker"
 RD_WAITING = "rd_waiting"
 HELP = "help"
@@ -200,6 +202,10 @@ class _AppState:
     # Spinner on each render would reset its internal frame counter to zero,
     # freezing the animation. We update its `text` attribute instead.
     _verb_spinner: Spinner | None = field(default=None, init=False, repr=False, compare=False)
+    # MAGNET_VIEW: the full magnet of the row that triggered `m` is stashed
+    # here so the body renderer can show it as an overlay panel.
+    magnet_view_text: str = ""
+    magnet_view_name: str = ""
 
 
 def _set_toast(state: _AppState, message: str) -> None:
@@ -404,6 +410,12 @@ def _dispatch_command(state: _AppState, cmd: str) -> bool:
         if entry is not None:
             # Main loop picks this up, suspends Live, runs _cmd_rd, restarts.
             state.rd_request_entry = entry
+    elif cmd == "m":
+        entry = _selected_entry(state)
+        if entry is not None:
+            state.magnet_view_text = entry.get("magnet", "")
+            state.magnet_view_name = entry.get("name", "")
+            state.mode = MAGNET_VIEW
     elif cmd in _ENTRY_ACTIONS:
         entry = _selected_entry(state)
         if entry is not None:
@@ -451,12 +463,22 @@ def _handle_chord(state: _AppState, key: str) -> bool:
     return _dispatch_command(state, key)
 
 
+def _handle_magnet_view_key(state: _AppState, key: str) -> bool:
+    """Magnet-view overlay: any key returns to RESULTS; q quits."""
+    if key == "q":
+        return False
+    state.mode = RESULTS
+    return True
+
+
 def handle_key(state: _AppState, key: str) -> bool:
     """Mutates state in-place. Returns False to break the event loop."""
     if state.mode == FILTER:
         return _handle_filter_key(state, key)
     if state.mode == SEARCH:
         return _handle_search_key(state, key)
+    if state.mode == MAGNET_VIEW:
+        return _handle_magnet_view_key(state, key)
     if state.mode == RESULTS:
         return _handle_chord(state, key)
     # Other modes ignore keys for now (LOADING / RD_PICKER / RD_WAITING).
@@ -605,6 +627,9 @@ def render_header(state: _AppState):
         )
     if state.mode == RESULTS:
         return Group(_summary_line(state), render_trail(state), _selected_info_line(state))
+    if state.mode == MAGNET_VIEW:
+        # Reuse the results header so the user keeps context while viewing.
+        return Group(_summary_line(state), render_trail(state), _selected_info_line(state))
     return Group(Text(f"torrent-hound — '{_state.query}'", style=PALETTE["headline"]), Text(""), Text(""))
 
 
@@ -691,7 +716,21 @@ def render_empty_state(state: _AppState) -> Text:
     )
 
 
+def render_magnet_panel(state: _AppState) -> Panel:
+    """Full-magnet overlay shown when the user presses `m`."""
+    body = Text(state.magnet_view_text, style=PALETTE["accent"], overflow="fold")
+    title_name = state.magnet_view_name[:80]
+    return Panel(
+        body,
+        title=Text(f"magnet · {title_name}", style=PALETTE["headline"]),
+        border_style=PALETTE["metadata"],
+        padding=(1, 2),
+    )
+
+
 def render_body(state: _AppState):
+    if state.mode == MAGNET_VIEW:
+        return render_magnet_panel(state)
     if not _visible_results(state) and state.mode != LOADING:
         return render_empty_state(state)
     return render_table(state)
@@ -705,9 +744,10 @@ def render_toast(state: _AppState) -> Text:
 # adapts to the screen the user is on rather than dumping a static legend.
 _FOOTER_HINTS = {
     LOADING:    "q quit",
-    RESULTS:    "↑↓ move · ⏎/c copy · cs seedr · o open page · d download · r repeat · rd real-debrid · s search · / filter · q quit",
+    RESULTS:    "↑↓ move · ⏎/c copy · cs seedr · m show magnet · o open page · d download · r repeat · rd real-debrid · s search · / filter · q quit",
     FILTER:     "type to narrow · enter accept · esc cancel",
     SEARCH:     "type query · enter search · esc cancel",
+    MAGNET_VIEW: "any key to return to results · q quit",
     RD_PICKER:  "0-9 pick · a all · enter confirm · esc cancel",
     RD_WAITING: "⏳ waiting on Debrid · esc cancel",
     HELP:       "any key to dismiss",

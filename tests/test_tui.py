@@ -20,6 +20,7 @@ from torrent_hound import state as state_module
 from torrent_hound.tui import (
     FILTER,
     LOADING,
+    MAGNET_VIEW,
     RESULTS,
     SEARCH,
     _AppState,
@@ -382,6 +383,36 @@ def test_search_backspace_removes_last_char(reset_state):
     state = _AppState(mode=SEARCH, search_text="ubuntu")
     handle_key(state, "\x7f")
     assert state.search_text == "ubunt"
+
+
+# ── handle_key — MAGNET_VIEW mode ─────────────────────────────────────
+
+def test_m_enters_magnet_view_with_selected_magnet(reset_state):
+    _populate_results(3)
+    state = _AppState(mode=RESULTS, selected_idx=1)
+    handle_key(state, "m")
+    assert state.mode == MAGNET_VIEW
+    assert state.magnet_view_text == state_module.results[1]["magnet"]
+    assert state.magnet_view_name == state_module.results[1]["name"]
+
+
+def test_m_on_empty_results_does_not_change_mode(reset_state):
+    state_module.results = []
+    state = _AppState(mode=RESULTS)
+    handle_key(state, "m")
+    assert state.mode == RESULTS
+    assert state.magnet_view_text == ""
+
+
+def test_magnet_view_any_key_returns_to_results(reset_state):
+    state = _AppState(mode=MAGNET_VIEW, magnet_view_text="magnet:?xt=...")
+    handle_key(state, "x")
+    assert state.mode == RESULTS
+
+
+def test_magnet_view_q_quits(reset_state):
+    state = _AppState(mode=MAGNET_VIEW)
+    assert handle_key(state, "q") is False
 
 
 # ── handle_key — LOADING mode ─────────────────────────────────────────
