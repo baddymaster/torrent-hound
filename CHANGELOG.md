@@ -9,9 +9,6 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [3.0.2] - 2026-04-28
 
-- Documenting EZTV empty-vs-failed fix in CHANGELOG for v3.0.2
-- Distinguishing EZTV empty results (torrents_count==0) from mirror failure
-
 ### Fixed
 
 - **EZTV no longer reports "all mirrors failed" for queries that resolve to
