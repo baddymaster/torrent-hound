@@ -104,7 +104,7 @@ SEARCH_VERBS = [
     "Scraping trackers", "Announcing to swarm", "Resolving peers",
     "Parsing bencode", "Tallying seeders", "Sieving leechers",
 ]
-VERB_ROTATE_SECONDS = 2.0
+VERB_ROTATE_SECONDS = 1
 
 
 @dataclass
@@ -351,7 +351,6 @@ def _handle_search_key(state: _AppState, key: str) -> bool:
             state.selected_idx = 0
             state.view_top = 0
             state.search_text = ""
-            state.source_progress = {}
             state.refetch_request = True
             state.mode = LOADING
         else:
@@ -384,7 +383,7 @@ def _dispatch_command(state: _AppState, cmd: str) -> bool:
         state.search_text = ""
     elif cmd == "r":
         # Repeat the current search (refetch; failed sources retry).
-        state.source_progress = {}
+        # source_status is reset by _kick_off_fetch on the next loop iteration.
         state.refetch_request = True
         state.mode = LOADING
     elif cmd == "rd":
@@ -701,8 +700,18 @@ _FOOTER_HINTS = {
     HELP:       "any key to dismiss",
 }
 
+# Footer overrides while a chord prefix is pending. Surfacing the available
+# extensions immediately makes the chord-timeout window feel like a deliberate
+# menu instead of an unresponsive UI.
+_CHORD_FOOTER_HINTS = {
+    "c": "c…  →  s seedr  ·  (wait) copy magnet  ·  esc cancel",
+    "r": "r…  →  d real-debrid  ·  (wait) repeat search  ·  esc cancel",
+}
+
 
 def render_footer(state: _AppState) -> Text:
+    if state.chord_buffer in _CHORD_FOOTER_HINTS:
+        return Text(_CHORD_FOOTER_HINTS[state.chord_buffer], style=PALETTE["accent"])
     return Text(_FOOTER_HINTS.get(state.mode, ""), style=PALETTE["metadata"])
 
 
