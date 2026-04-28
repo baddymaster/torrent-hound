@@ -7,6 +7,15 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Standalone binary build.** The `Release` workflow was still pointing
+  at `torrent_hound.py` (the pre-package-split monolith). v3.0.0
+  published cleanly to PyPI but the corresponding GitHub Release with
+  PyInstaller binaries for Linux/macOS/Windows failed to build. The
+  workflow now targets `torrent_hound/__main__.py`; v3.0.1 ships
+  identical Python code with a working binary release.
+
 ## [3.0.0] - 2026-04-28
 
 ### Added
