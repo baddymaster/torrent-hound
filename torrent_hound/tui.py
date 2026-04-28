@@ -183,6 +183,10 @@ class _AppState:
     # times out to `c` (copy). See CHORD_TIMEOUT_SECONDS / CHORD_PREFIXES.
     chord_buffer: str = ""
     chord_started_at: float = 0.0
+    # Persistent Spinner instance for the loading-phase verb. Recreating the
+    # Spinner on each render would reset its internal frame counter to zero,
+    # freezing the animation. We update its `text` attribute instead.
+    _verb_spinner: Spinner | None = field(default=None, init=False, repr=False, compare=False)
 
 
 def _set_toast(state: _AppState, message: str) -> None:
@@ -561,8 +565,12 @@ def render_header(state: _AppState):
     SEARCH:   blank          ·  blank                     ·  New search: text_
     """
     if state.mode == LOADING:
-        verb = Spinner("dots", text=Text(state.current_verb + "…", style=PALETTE["headline"]))
-        return Group(verb, render_trail(state), Text(""))
+        verb_text = Text(state.current_verb + "…", style=PALETTE["headline"])
+        if state._verb_spinner is None:
+            state._verb_spinner = Spinner("dots", text=verb_text)
+        else:
+            state._verb_spinner.update(text=verb_text)
+        return Group(state._verb_spinner, render_trail(state), Text(""))
     if state.mode == FILTER:
         return Group(
             _summary_line(state),
