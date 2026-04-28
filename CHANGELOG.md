@@ -7,15 +7,64 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — v3.0 TUI
+
+- **Single-screen TUI** built on `rich.live` replaces the old REPL `Enter
+  command :` loop. Arrow-key navigation, mode-aware footer, live filter,
+  inline Real-Debrid handoff. Quiet/JSON modes (`--quiet`, `--json`)
+  bypass the TUI entirely.
+- **Per-source fetch trail.** Three-row header:
+  - top: rotating verb spinner (during fetch) → run summary (after)
+  - middle: `trail:` line — per-source pip with mirror retry detail and
+    inline timing (`TPB ✓ 10 (180ms) · YTS ✓ 8 (420ms · 1 retry) · EZTV
+    ⚡ 5 cached 3m`)
+  - bottom: `selected: <source> · <name>` of the highlighted row
+- **Multi-character commands** via vim-style chord buffer:
+  - `c` (alone) copy magnet · `cs` copy + open Seedr
+  - `r` (alone) repeat search · `rd` send to Real-Debrid
+  - When a chord prefix is pending, the footer shows the available
+    extensions so the chord-timeout window feels like a menu rather than
+    a freeze.
+- **In-app new search.** `s` enters a new-query prompt; `r` repeats the
+  current search. No more quitting and re-running.
+- **Live filter.** `/` enters filter mode. Type to narrow; arrows still
+  navigate the filtered subset; `⏎` accepts; `Esc` clears.
+- **Live source-progress callbacks.** `searchAllSites(progress_callback=...)`
+  surfaces per-mirror events (`mirror_attempt` / `mirror_failed` / `ok`
+  / `cached` / `failed`) for the TUI's trail.
+- **TUI unit tests.** `tests/test_tui.py` covers `read_key` (all four
+  arrow keys, bare ESC, Alt-letter, unknown CSI) and `handle_key` state
+  transitions across all modes (RESULTS / FILTER / SEARCH / LOADING)
+  including chord buffering and ESC cancellation.
+
 ### Changed
-- Package layout: `torrent_hound.py` split into a proper `torrent_hound/`
-  package (cli, repl, ui, state, cache, config, realdebrid, sources/). No
-  behaviour change; cleaner foundation for the v3 TUI rewrite.
+
+- **Package layout.** `torrent_hound.py` split into a proper `torrent_hound/`
+  package (`cli`, `tui`, `state`, `cache`, `config`, `realdebrid`, `ui`,
+  `sources/`). No behaviour change beyond the TUI rewrite; cleaner
+  foundation for future work.
+- **Shell completion** setup now uses `torrent-hound --print-completion
+  {bash,zsh}` instead of `register-python-argcomplete torrent-hound`.
+  The latter ships inside the argcomplete dependency and isn't exposed
+  on PATH when installed via pipx.
 
 ### Removed
-- **Python 3.9 support.** Minimum supported Python is now 3.10 (matches the
-  v3.0 baseline; opens the door to modern type-hint syntax in upcoming
-  changes).
+
+- **REPL.** The interactive `Enter command :` loop (and `repl.py`) are
+  gone. Quiet/JSON output paths are unchanged.
+- **Numeric command prefixes.** `c1`, `m2`, `rd3` etc. no longer exist;
+  the TUI's cursor selects the row and the bare command acts on it.
+- **Python 3.9 support.** Minimum supported Python is 3.10.
+
+### Migration notes
+
+- Anyone scripting against `--quiet` / `--json` is unaffected — those
+  paths bypass the TUI.
+- Anyone embedding the package (`import torrent_hound`) keeps the same
+  re-export surface; new modules (`tui`, etc.) sit alongside the existing
+  names.
+- `from torrent_hound.repl import switch` etc. — `repl.py` is gone. The
+  TUI's per-key handlers live in `torrent_hound.tui`.
 
 ## [2.6.2] - 2026-04-18
 
