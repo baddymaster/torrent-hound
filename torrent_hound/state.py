@@ -1,10 +1,16 @@
 """Shared mutable state. One module owns it; readers/writers touch it as
 `from torrent_hound import state; state.results = ...` to avoid `global`
-declarations across the codebase.
+declarations scattered across the codebase.
 
-During the package-split migration this module sits empty — the monolith
-still holds the actual globals. State moves here in Commit 6 (per
-tasks/specs/2026-04-17-package-split-design.md).
+Read by: ui.printResultsQuietly, sources.searchAllSites (writes), tui
+(reads via _state.results), realdebrid (entry dicts include source tag).
+
+Conventions:
+* Source-specific result lists (`results_*`) are populated by searchAllSites
+  in source-of-truth fashion. The flat `results` is their concatenation.
+* `should_exit` is set by the `q` key path; checked by the main loop.
+* Per-session URLs (`tpb_url` etc.) are diagnostic — last URL fetched per
+  source. Not part of the user-facing result data.
 """
 from __future__ import annotations
 

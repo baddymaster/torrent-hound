@@ -2,11 +2,24 @@
 
 Single-screen rich.live app. Replaces the old REPL `Enter command :` loop
 with arrow-key navigation, mode-aware footer, live filtering, and inline
-RD integration.
+Real-Debrid integration.
 
-Architecture + screen model documented in
-tasks/specs/2026-04-25-tui-implementation-spec.md. This file is being
-filled in incrementally, one commit per step.
+Architecture overview
+---------------------
+* `_AppState` is the single source of truth for what's on screen. Render
+  functions are pure: state in, renderable out. Key handlers mutate state.
+* `cbreak()` puts stdin in non-canonical mode; `read_key()` reads via
+  `os.read()` (bypassing Python's TextIOWrapper buffering — see the
+  function's docstring) and decodes ESC sequences to symbolic names.
+* `handle_key` dispatches to per-mode handlers (`_handle_filter_key`,
+  `_handle_search_key`, `_handle_chord` for RESULTS).
+* Vim-style chord buffer (`c`/`r` are prefixes for `cs`/`rd`) — the
+  pending prefix is surfaced in the footer so the timeout window feels
+  like a menu rather than a freeze.
+* `searchAllSites` runs in a worker thread (`_kick_off_fetch`); per-source
+  progress events flow through a callback into `_SourceStatus` instances.
+* The persistent `_AppState._verb_spinner` instance is critical — see
+  the field's comment for why we can't recreate it per render.
 """
 from __future__ import annotations
 

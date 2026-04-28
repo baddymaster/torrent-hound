@@ -6,7 +6,11 @@ module is kept so re-enabling the source becomes one line in
   - `cloudscraper` ships a version that handles managed challenges, or
   - a maintained public 1337x proxy API appears (non-Playwright, stable)
 
-See tasks/research.md for the full CF bypass investigation.
+If you're trying to re-enable: the parser still works on the rendered HTML;
+the blocker is purely getting past CF on the first request. The User-Agent
+in `extract_magnet_link_1337x` predates the CF rollout and is left for
+parity with the old code path. Replace with whatever evades CF when the
+landscape changes.
 """
 from __future__ import annotations
 
