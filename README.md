@@ -29,18 +29,6 @@ Magnet copied to clipboard
 ↑↓ move · ⏎/c copy · cs seedr · o open page · d download · r repeat · rd real-debrid · s search · / filter · q quit
 ```
 
-## What's new in v3.0
-
-- Full TUI: arrow-key navigation, live filter, action keys on the highlighted
-  row. No more `c1` / `m2` / `rd3` numeric prefixes — selection is by cursor.
-- Per-source fetch trail: see exactly which mirror won, which failed, how
-  long each took, and which results came from cache.
-- Multi-character commands (`cs` for clipboard+Seedr, `rd` for Real-Debrid)
-  via a vim-style chord buffer with on-screen prompt.
-- Repeat (`r`) and new search (`s`) without leaving the table.
-- Package layout: `torrent_hound/` is now a proper Python package
-  (`cli`, `tui`, `sources/`, `realdebrid`, `cache`, `config`, `state`, `ui`).
-
 ## Sources
 
 | Source         | Content   | Method                      |
