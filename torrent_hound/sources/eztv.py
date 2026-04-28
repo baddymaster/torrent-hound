@@ -129,6 +129,14 @@ def searchEZTV(search_string='', quiet_mode=False, limit=10, timeout=8, progress
                 url = f"https://{domain}/api/get-torrents?imdb_id={imdb_id}&limit=100&page={page}"
                 r = requests.get(url, timeout=timeout)
                 data = r.json()
+                # API responded with an explicit zero count → genuine empty
+                # (IMDB matched something — usually a film — that EZTV simply
+                # doesn't host). Walking more mirrors can't conjure torrents;
+                # they all share the same backend keyed by IMDB ID.
+                if page == 1 and data.get('torrents_count') == 0:
+                    if progress:
+                        progress({"type": "empty"})
+                    return []
                 page_torrents = data.get('torrents', [])
                 if not page_torrents:
                     break

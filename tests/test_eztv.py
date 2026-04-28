@@ -248,6 +248,35 @@ def test_searchEZTV_shows_error_when_imdb_fails(th, capsys):
         assert "No matching TV show" in capsys.readouterr().out
 
 
+def test_searchEZTV_emits_empty_when_api_returns_zero_torrents(th, eztv_no_hits_json):
+    """If IMDB matches but EZTV's API returns torrents_count: 0 (e.g. Kung Fu
+    Panda — IMDB has the entry but EZTV doesn't host any episodes), the source
+    must emit `empty` and stop probing. Walking more mirrors can't conjure
+    torrents — they all share the same backend keyed by IMDB ID."""
+    events = []
+    eztv_call_count = [0]
+
+    def fake_get(url, **kwargs):
+        if "imdb.com" in url:
+            resp = MagicMock()
+            resp.json.return_value = {"d": [{"id": "tt1545214", "qid": "tvSeries", "l": "Kung Fu Panda"}]}
+            return resp
+        eztv_call_count[0] += 1
+        resp = MagicMock()
+        resp.json.return_value = eztv_no_hits_json
+        return resp
+
+    with patch.object(th.requests, "get", side_effect=fake_get):
+        results = th.searchEZTV("kung fu panda", quiet_mode=True, progress=events.append)
+
+    assert results == []
+    types = [e["type"] for e in events]
+    assert "empty" in types, f"expected an `empty` event, got: {types}"
+    assert "failed" not in types, f"unexpected `failed` event: {types}"
+    assert types.count("mirror_attempt") == 1, "should not have probed beyond the first mirror"
+    assert eztv_call_count[0] == 1, "should not have hit the EZTV API more than once"
+
+
 def test_searchEZTV_shows_error_when_all_domains_fail(th, capsys):
     """When all EZTV domains are unreachable, user sees a clear message."""
     call_count = [0]
