@@ -416,6 +416,8 @@ def _dispatch_command(state: _AppState, cmd: str) -> bool:
             state.magnet_view_text = entry.get("magnet", "")
             state.magnet_view_name = entry.get("name", "")
             state.mode = MAGNET_VIEW
+    elif cmd == "?":
+        state.mode = HELP
     elif cmd in _ENTRY_ACTIONS:
         entry = _selected_entry(state)
         if entry is not None:
@@ -471,6 +473,14 @@ def _handle_magnet_view_key(state: _AppState, key: str) -> bool:
     return True
 
 
+def _handle_help_key(state: _AppState, key: str) -> bool:
+    """Help overlay: any key returns to RESULTS; q quits."""
+    if key == "q":
+        return False
+    state.mode = RESULTS
+    return True
+
+
 def handle_key(state: _AppState, key: str) -> bool:
     """Mutates state in-place. Returns False to break the event loop."""
     if state.mode == FILTER:
@@ -479,6 +489,8 @@ def handle_key(state: _AppState, key: str) -> bool:
         return _handle_search_key(state, key)
     if state.mode == MAGNET_VIEW:
         return _handle_magnet_view_key(state, key)
+    if state.mode == HELP:
+        return _handle_help_key(state, key)
     if state.mode == RESULTS:
         return _handle_chord(state, key)
     # Other modes ignore keys for now (LOADING / RD_PICKER / RD_WAITING).
@@ -627,8 +639,8 @@ def render_header(state: _AppState):
         )
     if state.mode == RESULTS:
         return Group(_summary_line(state), render_trail(state), _selected_info_line(state))
-    if state.mode == MAGNET_VIEW:
-        # Reuse the results header so the user keeps context while viewing.
+    if state.mode in (MAGNET_VIEW, HELP):
+        # Reuse the results header so the user keeps context while in an overlay.
         return Group(_summary_line(state), render_trail(state), _selected_info_line(state))
     return Group(Text(f"torrent-hound — '{_state.query}'", style=PALETTE["headline"]), Text(""), Text(""))
 
@@ -728,9 +740,58 @@ def render_magnet_panel(state: _AppState) -> Panel:
     )
 
 
+# Help-overlay sections — keep aligned with _FOOTER_HINTS and _CHORD_FOOTER_HINTS.
+_HELP_SECTIONS = [
+    ("Navigation", [
+        ("↑ ↓",       "move selection"),
+        ("q",         "quit"),
+    ]),
+    ("Act on the highlighted row", [
+        ("c · ⏎",    "copy magnet to clipboard"),
+        ("cs",        "copy magnet + open Seedr.cc"),
+        ("m",         "show full magnet in overlay"),
+        ("o",         "open torrent page in browser"),
+        ("d",         "send magnet to default torrent client"),
+        ("rd",        "submit to Real-Debrid"),
+    ]),
+    ("Search & filter", [
+        ("/",         "live filter (type to narrow · esc to clear)"),
+        ("s",         "new search query"),
+        ("r",         "repeat current search"),
+    ]),
+    ("Help", [
+        ("?",         "show / hide this overlay"),
+    ]),
+]
+
+
+def render_help_panel() -> Panel:
+    """Keystroke cheatsheet, shown when the user presses `?`."""
+    rows = []
+    for i, (section_name, keys) in enumerate(_HELP_SECTIONS):
+        if i:
+            rows.append(Text(""))  # blank between sections
+        rows.append(Text(section_name, style=PALETTE["headline"]))
+        for key, action in keys:
+            rows.append(Text.assemble(
+                ("  ", ""),
+                (f"{key:8}", PALETTE["accent"]),
+                ("  ", ""),
+                (action, PALETTE["metadata"]),
+            ))
+    return Panel(
+        Group(*rows),
+        title=Text("torrent-hound — keystrokes", style=PALETTE["headline"]),
+        border_style=PALETTE["metadata"],
+        padding=(1, 2),
+    )
+
+
 def render_body(state: _AppState):
     if state.mode == MAGNET_VIEW:
         return render_magnet_panel(state)
+    if state.mode == HELP:
+        return render_help_panel()
     if not _visible_results(state) and state.mode != LOADING:
         return render_empty_state(state)
     return render_table(state)
@@ -744,13 +805,13 @@ def render_toast(state: _AppState) -> Text:
 # adapts to the screen the user is on rather than dumping a static legend.
 _FOOTER_HINTS = {
     LOADING:    "q quit",
-    RESULTS:    "↑↓ move · ⏎/c copy · cs seedr · m show magnet · o open page · d download · r repeat · rd real-debrid · s search · / filter · q quit",
+    RESULTS:    "↑↓ move · ⏎/c copy · cs seedr · m magnet · o open · d download · r repeat · rd real-debrid · s search · / filter · ? help · q quit",
     FILTER:     "type to narrow · enter accept · esc cancel",
     SEARCH:     "type query · enter search · esc cancel",
     MAGNET_VIEW: "any key to return to results · q quit",
     RD_PICKER:  "0-9 pick · a all · enter confirm · esc cancel",
     RD_WAITING: "⏳ waiting on Debrid · esc cancel",
-    HELP:       "any key to dismiss",
+    HELP:       "any key to dismiss · q quit",
 }
 
 # Footer overrides while a chord prefix is pending. Surfacing the available

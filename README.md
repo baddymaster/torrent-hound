@@ -126,6 +126,7 @@ mode-aware footer of keystroke hints at the bottom.
 | Key     | Action                                                |
 |---------|-------------------------------------------------------|
 | `↑` / `↓` | Move selection (table scrolls when selection goes off-screen) |
+| `?`     | Show / hide the keystroke help overlay                |
 | `q`     | Quit                                                  |
 
 #### Acting on the highlighted row

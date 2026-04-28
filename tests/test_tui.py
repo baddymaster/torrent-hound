@@ -19,6 +19,7 @@ import pytest
 from torrent_hound import state as state_module
 from torrent_hound.tui import (
     FILTER,
+    HELP,
     LOADING,
     MAGNET_VIEW,
     RESULTS,
@@ -412,6 +413,25 @@ def test_magnet_view_any_key_returns_to_results(reset_state):
 
 def test_magnet_view_q_quits(reset_state):
     state = _AppState(mode=MAGNET_VIEW)
+    assert handle_key(state, "q") is False
+
+
+# ── handle_key — HELP mode ────────────────────────────────────────────
+
+def test_question_mark_enters_help_mode(reset_state):
+    state = _AppState(mode=RESULTS)
+    handle_key(state, "?")
+    assert state.mode == HELP
+
+
+def test_help_any_key_returns_to_results(reset_state):
+    state = _AppState(mode=HELP)
+    handle_key(state, "x")
+    assert state.mode == RESULTS
+
+
+def test_help_q_quits(reset_state):
+    state = _AppState(mode=HELP)
     assert handle_key(state, "q") is False
 
 
