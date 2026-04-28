@@ -120,6 +120,17 @@ SEARCH_VERBS = [
 ]
 VERB_ROTATE_SECONDS = 1
 
+# Trail-line spinner. Static unicode glyphs in Text.assemble can't animate on
+# their own, so we pick the current frame from monotonic time. Matches rich's
+# "dots" spinner (10 frames @ 80ms); render_trail runs every UI frame.
+_TRAIL_SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+_TRAIL_SPINNER_INTERVAL = 0.08
+
+
+def _trail_spinner_frame() -> str:
+    idx = int(time.monotonic() / _TRAIL_SPINNER_INTERVAL) % len(_TRAIL_SPINNER_FRAMES)
+    return _TRAIL_SPINNER_FRAMES[idx]
+
 
 @dataclass
 class _SourceStatus:
@@ -534,7 +545,7 @@ def render_trail(state: _AppState) -> Text:
         parts.append((" ", ""))
 
         if s.in_flight:
-            parts.append(("⠋", PALETTE["accent"]))
+            parts.append((_trail_spinner_frame(), PALETTE["accent"]))
             if s.failed_mirrors_count:
                 parts.append((f" retry {s.current_mirror}", PALETTE["metadata"]))
         elif s.final_state == "ok":
