@@ -56,6 +56,43 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the TUI's cursor selects the row and the bare command acts on it.
 - **Python 3.9 support.** Minimum supported Python is 3.10.
 
+### Fixed
+
+- **Sources no longer report "all mirrors failed" for genuine empty
+  results.** Both TPB and YTS were probing every mirror in the chain
+  when the upstream API worked but returned zero matches, then emitting
+  `✗ all mirrors failed` in the trail and a corresponding toast. Now
+  they emit a clean `no results` event after the first responsive
+  mirror — TPB via a structural check on the search-results table
+  (header-only-row signals a successful empty page versus a missing
+  table that signals a dead mirror), YTS via gating on the `movies`
+  array being non-empty (catches both pure-zero queries and the
+  quirkier `movie_count > 0 + missing movies key` shape that e.g.
+  wrong-year queries produce).
+- **YTS inline quality tokens** like `1080p`, `720p`, `2160p`,
+  `1080p.x265`, and `3D` appended to a search query no longer silently
+  return zero. YTS's `query_term` does title-only substring matching,
+  so quality tokens never matched a movie title. We now extract them
+  via `_extract_yts_quality` and route them to YTS's dedicated
+  `?quality=` API parameter, then post-filter the returned torrent
+  variants so the user sees only the requested quality.
+- **YTS movie-page links** now use the post-redirect host. A request
+  to `yts.lt` that 301'd to `yts.bz` was rewriting links with the
+  originally-requested host (a dead mirror); now they use the actual
+  responding host from `r.url`.
+- **Per-source spinner in the trail line** now animates. The in-flight
+  glyph was a static `⠋`; it now rotates through the standard 10-frame
+  dots pattern based on monotonic time.
+
+### Changed
+
+- **YTS mirror list refresh.** Added `yts.bz` and `yts.gg` (both
+  confirmed official — their JSON responses embed an operator-signed
+  migration notice pointing to `https://movies-api.accel.li/api/v2/`,
+  corroborated by the yts.bz API documentation page). Removed `yts.mx`
+  (DNS no longer resolves) and `yts.rs` (Cloudflare 523 origin
+  unreachable).
+
 ### Migration notes
 
 - Anyone scripting against `--quiet` / `--json` is unaffected — those
