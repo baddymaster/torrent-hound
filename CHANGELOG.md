@@ -7,6 +7,8 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-04-28
+
 ### Fixed
 
 - **Standalone binary build.** The `Release` workflow was still pointing
