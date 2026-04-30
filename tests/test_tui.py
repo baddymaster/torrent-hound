@@ -9,6 +9,8 @@ development (timing window too tight, Python TextIOWrapper buffering, missing
 arrow handling in filter mode). These tests pin all of those down.
 """
 
+import threading
+import time
 from collections import deque
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
@@ -21,9 +23,14 @@ from torrent_hound.tui import (
     HELP,
     LOADING,
     MAGNET_VIEW,
+    RD_PICKER,
+    RD_WAITING,
     RESULTS,
     SEARCH,
     _AppState,
+    _kick_off_rd,
+    _rd_worker,
+    _RDFlow,
     handle_key,
     read_key,
 )
@@ -446,3 +453,298 @@ def test_loading_arrows_ignored(reset_state):
     state = _AppState(mode=LOADING, selected_idx=0)
     handle_key(state, "DOWN")
     assert state.selected_idx == 0    # ignored while loading
+
+
+# ── handle_key — RD_PICKER mode ───────────────────────────────────────
+
+def _picker_state(n_files=4, marked=None, idx=0):
+    """Build an _AppState in RD_PICKER mode with `n_files` mock files,
+    `marked` indices pre-marked (defaults to all), at cursor `idx`."""
+    flow = _RDFlow()
+    flow.files = [{"id": i + 100, "path": f"/show/file{i}.mkv", "bytes": 1000} for i in range(n_files)]
+    flow.picker_marked = set(range(n_files)) if marked is None else set(marked)
+    flow.picker_idx = idx
+    flow.selection_event = threading.Event()
+    state = _AppState(mode=RD_PICKER)
+    state.rd_flow = flow
+    return state
+
+
+def test_picker_down_moves_cursor(reset_state):
+    state = _picker_state(idx=0)
+    handle_key(state, "DOWN")
+    assert state.rd_flow.picker_idx == 1
+
+
+def test_picker_down_clamps_at_bottom(reset_state):
+    state = _picker_state(n_files=3, idx=2)
+    handle_key(state, "DOWN")
+    assert state.rd_flow.picker_idx == 2
+
+
+def test_picker_up_clamps_at_top(reset_state):
+    state = _picker_state(idx=0)
+    handle_key(state, "UP")
+    assert state.rd_flow.picker_idx == 0
+
+
+def test_picker_space_toggles_current_off_when_marked(reset_state):
+    state = _picker_state(idx=2, marked={0, 1, 2, 3})
+    handle_key(state, " ")
+    assert 2 not in state.rd_flow.picker_marked
+    assert state.rd_flow.picker_marked == {0, 1, 3}
+
+
+def test_picker_space_toggles_current_on_when_unmarked(reset_state):
+    state = _picker_state(idx=2, marked={0, 1})
+    handle_key(state, " ")
+    assert 2 in state.rd_flow.picker_marked
+
+
+def test_picker_a_clears_when_all_marked(reset_state):
+    state = _picker_state(n_files=3, marked={0, 1, 2})
+    handle_key(state, "a")
+    assert state.rd_flow.picker_marked == set()
+
+
+def test_picker_a_marks_all_when_none(reset_state):
+    state = _picker_state(n_files=3, marked=set())
+    handle_key(state, "a")
+    assert state.rd_flow.picker_marked == {0, 1, 2}
+
+
+def test_picker_a_marks_all_when_partial(reset_state):
+    state = _picker_state(n_files=3, marked={1})
+    handle_key(state, "a")
+    assert state.rd_flow.picker_marked == {0, 1, 2}
+
+
+def test_picker_enter_signals_worker_with_sorted_selection(reset_state):
+    state = _picker_state(n_files=4, marked={3, 0, 2})
+    handle_key(state, "\r")
+    assert state.rd_flow.pending_selection == [0, 2, 3]
+    assert state.rd_flow.selection_event.is_set()
+
+
+def test_picker_enter_with_nothing_marked_does_not_signal(reset_state):
+    """Confirming with zero files marked is a no-op — the worker must end up
+    with at least one file selected, otherwise RD's selectFiles call will fail."""
+    state = _picker_state(marked=set())
+    handle_key(state, "\r")
+    assert state.rd_flow.pending_selection is None
+    assert not state.rd_flow.selection_event.is_set()
+
+
+def test_picker_esc_signals_cancel(reset_state):
+    state = _picker_state()
+    handle_key(state, "ESC")
+    assert state.rd_flow.pending_selection == "cancel"
+    assert state.rd_flow.selection_event.is_set()
+
+
+def test_picker_q_cancels_and_quits(reset_state):
+    """Quitting from the picker must cancel the worker first — otherwise it'd
+    block forever on selection_event.wait() and the daemon thread stays
+    around until process exit."""
+    state = _picker_state()
+    result = handle_key(state, "q")
+    assert result is False
+    assert state.rd_flow.pending_selection == "cancel"
+    assert state.rd_flow.selection_event.is_set()
+
+
+# ── handle_key — RD_WAITING mode ──────────────────────────────────────
+
+def test_rd_waiting_q_quits(reset_state):
+    state = _AppState(mode=RD_WAITING)
+    assert handle_key(state, "q") is False
+
+
+def test_rd_waiting_other_keys_ignored(reset_state):
+    """Mid-flow keys are ignored — the worker is doing network I/O and we
+    don't want the user accidentally cancelling by pressing arrows."""
+    state = _AppState(mode=RD_WAITING)
+    assert handle_key(state, "DOWN") is True
+    assert handle_key(state, "x") is True
+    assert state.mode == RD_WAITING
+
+
+# ── _rd_worker integration (mocked RD calls) ──────────────────────────
+
+def _entry(magnet="magnet:?xt=urn:btih:" + "ab" * 20):
+    return {"name": "test torrent", "magnet": magnet, "link": "https://example/page"}
+
+
+def test_rd_worker_single_file_flow_succeeds(reset_state):
+    """Single-file torrent: worker selects 'all' without invoking the picker,
+    polls links, dispatches via the configured action, surfaces success toast."""
+    info_with_one_file = {
+        "files": [{"id": 100, "path": "/film.mkv", "bytes": 1024, "selected": 0}],
+        "status": "downloaded",
+        "links": ["https://rd.example/host1"],
+    }
+    state = _AppState(mode=RD_WAITING)
+    state.rd_flow = _RDFlow()
+    with patch("torrent_hound.tui._rd_add_magnet", return_value="tid-1"), \
+         patch("torrent_hound.tui._rd_get_info", return_value=info_with_one_file), \
+         patch("torrent_hound.tui._rd_select_files") as m_sel, \
+         patch("torrent_hound.tui._rd_unrestrict", return_value="https://rd.example/direct"), \
+         patch("torrent_hound.tui._rd_dispatch", return_value="Real-Debrid: 1 link copied"):
+        _rd_worker(state, _entry(), token="tok", action="clipboard")
+    assert state.rd_flow is None
+    assert state.mode == RESULTS
+    assert "1 link copied" in state.toast
+    m_sel.assert_called_once_with("tid-1", "all", token="tok")
+
+
+def test_rd_worker_multi_file_picker_handoff(reset_state):
+    """Multi-file torrent: worker stalls on RD_PICKER until the main thread
+    sets `pending_selection` and signals `selection_event`. After the handoff,
+    worker maps indices → RD file IDs, calls selectFiles, completes the flow."""
+    files = [
+        {"id": 200, "path": "/show/s01e01.mkv", "bytes": 1000, "selected": 0},
+        {"id": 201, "path": "/show/s01e02.mkv", "bytes": 1000, "selected": 0},
+        {"id": 202, "path": "/show/s01e03.mkv", "bytes": 1000, "selected": 0},
+    ]
+    info_with_files = {"files": files, "status": "downloaded", "links": ["https://rd.example/h"]}
+    state = _AppState(mode=RD_WAITING)
+    state.rd_flow = _RDFlow()
+    select_calls = []
+    with patch("torrent_hound.tui._rd_add_magnet", return_value="tid-2"), \
+         patch("torrent_hound.tui._rd_get_info", return_value=info_with_files), \
+         patch("torrent_hound.tui._rd_select_files", side_effect=lambda *a, **kw: select_calls.append((a, kw))), \
+         patch("torrent_hound.tui._rd_unrestrict", return_value="https://rd.example/direct"), \
+         patch("torrent_hound.tui._rd_dispatch", return_value="Real-Debrid: 1 link copied"):
+        worker = threading.Thread(
+            target=_rd_worker, args=(state, _entry(), "tok", "clipboard"), daemon=True
+        )
+        worker.start()
+        # Wait for the worker to flip into RD_PICKER. Cap to avoid hangs in CI.
+        deadline = time.monotonic() + 2.0
+        while state.mode != RD_PICKER:
+            if time.monotonic() >= deadline:
+                raise AssertionError(f"worker never reached RD_PICKER (mode={state.mode!r})")
+            time.sleep(0.005)
+        # Pick the first and third file via the same hand-off the picker uses
+        state.rd_flow.pending_selection = [0, 2]
+        state.rd_flow.selection_event.set()
+        worker.join(timeout=2.0)
+        assert not worker.is_alive(), "worker didn't finish after selection signalled"
+    assert state.rd_flow is None
+    assert state.mode == RESULTS
+    assert "1 link copied" in state.toast
+    assert len(select_calls) == 1
+    args, kwargs = select_calls[0]
+    assert args == ("tid-2", "200,202")  # IDs mapped from indices [0, 2]
+    assert kwargs == {"token": "tok"}
+
+
+def test_rd_worker_cancel_from_picker_clears_flow(reset_state):
+    """Picker cancel must end the flow with a 'cancelled' toast and not call
+    selectFiles or any downstream API."""
+    files = [{"id": 1, "path": "/a", "bytes": 1, "selected": 0},
+             {"id": 2, "path": "/b", "bytes": 1, "selected": 0}]
+    info = {"files": files, "status": "downloaded", "links": []}
+    state = _AppState(mode=RD_WAITING)
+    state.rd_flow = _RDFlow()
+    with patch("torrent_hound.tui._rd_add_magnet", return_value="tid"), \
+         patch("torrent_hound.tui._rd_get_info", return_value=info), \
+         patch("torrent_hound.tui._rd_select_files") as m_sel, \
+         patch("torrent_hound.tui._rd_unrestrict") as m_un, \
+         patch("torrent_hound.tui._rd_dispatch") as m_dispatch:
+        worker = threading.Thread(
+            target=_rd_worker, args=(state, _entry(), "tok", "clipboard"), daemon=True
+        )
+        worker.start()
+        deadline = time.monotonic() + 2.0
+        while state.mode != RD_PICKER:
+            if time.monotonic() >= deadline:
+                raise AssertionError("worker never reached RD_PICKER")
+            time.sleep(0.005)
+        state.rd_flow.pending_selection = "cancel"
+        state.rd_flow.selection_event.set()
+        worker.join(timeout=2.0)
+    assert state.rd_flow is None
+    assert state.mode == RESULTS
+    assert "cancelled" in state.toast.lower()
+    m_sel.assert_not_called()
+    m_un.assert_not_called()
+    m_dispatch.assert_not_called()
+
+
+def test_rd_worker_already_selected_skips_picker(reset_state):
+    """Re-running rd on a torrent we already submitted: RD reports `selected: 1`
+    on at least one file, so we must skip the picker and selectFiles call."""
+    info = {
+        "files": [{"id": 1, "path": "/a", "bytes": 1, "selected": 1}],
+        "status": "downloaded",
+        "links": ["https://rd.example/h"],
+    }
+    state = _AppState(mode=RD_WAITING)
+    state.rd_flow = _RDFlow()
+    with patch("torrent_hound.tui._rd_add_magnet", return_value="tid"), \
+         patch("torrent_hound.tui._rd_get_info", return_value=info), \
+         patch("torrent_hound.tui._rd_select_files") as m_sel, \
+         patch("torrent_hound.tui._rd_unrestrict", return_value="https://rd.example/direct"), \
+         patch("torrent_hound.tui._rd_dispatch", return_value="OK"):
+        _rd_worker(state, _entry(), token="tok", action="clipboard")
+    m_sel.assert_not_called()
+    assert state.rd_flow is None
+    assert state.mode == RESULTS
+
+
+def test_rd_worker_no_files_yet_asks_user_to_retry(reset_state):
+    """Magnet still resolving on RD's side (info returns no files) — surface
+    a clear retry message and bail without calling selectFiles."""
+    info_no_files = {"files": [], "status": "magnet_conversion"}
+    state = _AppState(mode=RD_WAITING)
+    state.rd_flow = _RDFlow()
+    with patch("torrent_hound.tui._rd_add_magnet", return_value="tid"), \
+         patch("torrent_hound.tui._rd_get_info", return_value=info_no_files), \
+         patch("torrent_hound.tui._rd_select_files") as m_sel:
+        _rd_worker(state, _entry(), token="tok", action="clipboard")
+    m_sel.assert_not_called()
+    assert state.rd_flow is None
+    assert "resolving" in state.toast.lower()
+    assert state.mode == RESULTS
+
+
+def test_rd_worker_bad_status_surfaces_message(reset_state):
+    """RD marked the torrent dead/virus/error — bail with the status as the toast."""
+    info = {
+        "files": [{"id": 1, "path": "/a", "bytes": 1, "selected": 1}],
+        "status": "virus",
+        "links": [],
+    }
+    state = _AppState(mode=RD_WAITING)
+    state.rd_flow = _RDFlow()
+    with patch("torrent_hound.tui._rd_add_magnet", return_value="tid"), \
+         patch("torrent_hound.tui._rd_get_info", return_value=info):
+        _rd_worker(state, _entry(), token="tok", action="clipboard")
+    assert state.rd_flow is None
+    assert "virus" in state.toast
+    assert state.mode == RESULTS
+
+
+def test_rd_worker_invalid_magnet_short_circuits(reset_state):
+    """Entry with an unparseable magnet should surface a friendly toast and
+    not even attempt addMagnet."""
+    state = _AppState(mode=RD_WAITING)
+    state.rd_flow = _RDFlow()
+    with patch("torrent_hound.tui._rd_add_magnet") as m_add:
+        _rd_worker(state, {"magnet": "not-a-magnet"}, token="tok", action="clipboard")
+    m_add.assert_not_called()
+    assert state.rd_flow is None
+    assert "info-hash" in state.toast.lower()
+
+
+def test_kick_off_rd_no_token_toasts_and_returns_none(reset_state):
+    """No token configured → friendly toast, no thread started, mode unchanged."""
+    state = _AppState(mode=RESULTS)
+    with patch("torrent_hound.tui._load_config", return_value={}), \
+         patch("torrent_hound.tui._resolve_rd_token", return_value=None):
+        result = _kick_off_rd(state, _entry())
+    assert result is None
+    assert state.rd_flow is None
+    assert state.mode == RESULTS
+    assert "configure-rd" in state.toast or "RD_TOKEN" in state.toast

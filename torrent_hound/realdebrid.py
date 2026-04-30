@@ -349,7 +349,7 @@ def _rd_dispatch(links, action):
     user-facing summary string. Raises `_RdError` if no usable links remain
     after filtering.
     """
-    safe = [l for l in links if urllib.parse.urlparse(l).scheme == "https"]
+    safe = [link for link in links if urllib.parse.urlparse(link).scheme == "https"]
     skipped = len(links) - len(safe)
     if not safe:
         raise _RdError("No usable Real-Debrid direct links (all had unexpected URL schemes).")

@@ -45,7 +45,22 @@ from rich.table import Table
 from rich.text import Text
 
 from torrent_hound import state as _state
-from torrent_hound.realdebrid import _cmd_rd
+from torrent_hound.config import (
+    _load_config,
+    _resolve_rd_action,
+    _resolve_rd_token,
+)
+from torrent_hound.realdebrid import (
+    _human_size,
+    _rd_add_magnet,
+    _rd_dispatch,
+    _rd_get_info,
+    _rd_parse_hash,
+    _rd_select_files,
+    _rd_unrestrict,
+    _RdError,
+    _strip_ansi,
+)
 from torrent_hound.sources import searchAllSites
 from torrent_hound.ui import console as _console
 
@@ -177,6 +192,28 @@ class _SourceStatus:
 
 
 @dataclass
+class _RDFlow:
+    """All transient state for one Real-Debrid invocation. Lives on
+    `_AppState.rd_flow` while the operation is in flight; cleared back to
+    None when the worker returns (success, error, or cancellation).
+
+    The worker thread (started by `_kick_off_rd`) reads + writes most
+    fields directly. Atomic per-attribute under the GIL — same pattern as
+    `_SourceStatus` for the source-fetch flow. The picker-related fields
+    (`files`, `picker_idx`, `picker_marked`) are written once by the
+    worker before it switches mode to RD_PICKER, then read+mutated by the
+    main thread's key handler. The handoff back to the worker is via
+    `selection_event` (which the worker waits on) plus
+    `pending_selection` (which the handler sets before signalling)."""
+    phase: str = "Submitting to Real-Debrid"
+    files: list = field(default_factory=list)
+    picker_idx: int = 0
+    picker_marked: set = field(default_factory=set)
+    pending_selection: object = None  # list[int] of indices, or "cancel"
+    selection_event: threading.Event | None = None  # lazily created
+
+
+@dataclass
 class _AppState:
     """All TUI state in one place. Render is a pure function of this."""
     mode: str = LOADING
@@ -192,9 +229,12 @@ class _AppState:
     # Fetch timing for the run-summary line (M5).
     fetch_started_at: float = 0.0
     fetch_elapsed: float = 0.0
-    # Set when the user requests RD on a row; main loop suspends Live and
-    # runs _cmd_rd then clears this. None at rest.
+    # Set when the user requests RD on a row; main loop picks it up, kicks
+    # off the worker, then clears this. None at rest.
     rd_request_entry: dict | None = None
+    # Set by `_kick_off_rd` and cleared by the worker on completion. While
+    # non-None, the TUI is in RD_WAITING or RD_PICKER mode.
+    rd_flow: _RDFlow | None = None
     # Wall-clock when toast was set; loop expires after TOAST_TTL_SECONDS.
     toast_set_at: float = 0.0
     # SEARCH mode buffer (typed new-query string) and the refetch trigger.
@@ -418,7 +458,7 @@ def _dispatch_command(state: _AppState, cmd: str) -> bool:
     elif cmd == "rd":
         entry = _selected_entry(state)
         if entry is not None:
-            # Main loop picks this up, suspends Live, runs _cmd_rd, restarts.
+            # Main loop picks this up and starts the RD worker.
             state.rd_request_entry = entry
     elif cmd == "m":
         entry = _selected_entry(state)
@@ -475,6 +515,55 @@ def _handle_chord(state: _AppState, key: str) -> bool:
     return _dispatch_command(state, key)
 
 
+def _handle_rd_picker_key(state: _AppState, key: str) -> bool:
+    """RD_PICKER mode: arrow nav over the file list, space toggles current row,
+    `a` toggles all, ⏎ confirms, esc cancels. Confirm/cancel signal the worker
+    via `selection_event` so it can resume the RD flow."""
+    flow = state.rd_flow
+    if flow is None or flow.selection_event is None:
+        # Defensive — shouldn't happen, but never wedge if we get here.
+        state.mode = RESULTS
+        return True
+    n = len(flow.files)
+    if key == "ESC":
+        flow.pending_selection = "cancel"
+        flow.selection_event.set()
+        return True
+    if key in ("\r", "\n"):
+        if not flow.picker_marked:
+            return True  # need ≥1 file marked
+        flow.pending_selection = sorted(flow.picker_marked)
+        flow.selection_event.set()
+        return True
+    if key == "UP":
+        flow.picker_idx = max(0, flow.picker_idx - 1)
+    elif key == "DOWN":
+        flow.picker_idx = min(max(0, n - 1), flow.picker_idx + 1)
+    elif key == " ":
+        if flow.picker_idx in flow.picker_marked:
+            flow.picker_marked.discard(flow.picker_idx)
+        else:
+            flow.picker_marked.add(flow.picker_idx)
+    elif key == "a":
+        if len(flow.picker_marked) == n:
+            flow.picker_marked.clear()
+        else:
+            flow.picker_marked = set(range(n))
+    elif key == "q":
+        # Cancel the RD flow before quitting so the worker doesn't block forever
+        flow.pending_selection = "cancel"
+        flow.selection_event.set()
+        return False
+    return True
+
+
+def _handle_rd_waiting_key(state: _AppState, key: str) -> bool:
+    """RD_WAITING mode: keys mostly ignored while the worker runs. q quits."""
+    if key == "q":
+        return False
+    return True
+
+
 def _handle_magnet_view_key(state: _AppState, key: str) -> bool:
     """Magnet-view overlay: any key returns to RESULTS; q quits."""
     if key == "q":
@@ -501,9 +590,13 @@ def handle_key(state: _AppState, key: str) -> bool:
         return _handle_magnet_view_key(state, key)
     if state.mode == HELP:
         return _handle_help_key(state, key)
+    if state.mode == RD_PICKER:
+        return _handle_rd_picker_key(state, key)
+    if state.mode == RD_WAITING:
+        return _handle_rd_waiting_key(state, key)
     if state.mode == RESULTS:
         return _handle_chord(state, key)
-    # Other modes ignore keys for now (LOADING / RD_PICKER / RD_WAITING).
+    # Remaining mode is LOADING.
     if key == "q":
         return False
     return True
@@ -797,11 +890,67 @@ def render_help_panel() -> Panel:
     )
 
 
+def render_rd_picker(state: _AppState) -> Panel:
+    """Multi-file selection overlay shown during a Real-Debrid flow.
+    Mirrors the look of the magnet/help overlays but with per-row [x]/[ ]
+    checkboxes and a cursor."""
+    flow = state.rd_flow
+    if flow is None:
+        return Panel(Text("(no active RD flow)", style=PALETTE["metadata"]))
+    rows = []
+    visible = max(1, _console.size.height - 9)  # match the table viewport budget
+    start = max(0, min(flow.picker_idx - visible // 2, max(0, len(flow.files) - visible)))
+    end = min(len(flow.files), start + visible)
+    for i in range(start, end):
+        f = flow.files[i]
+        marker = "[x]" if i in flow.picker_marked else "[ ]"
+        cursor = "▶" if i == flow.picker_idx else " "
+        basename = f.get("path", "").rsplit("/", 1)[-1] or f.get("path", "")
+        # `_strip_ansi` defends against malicious metadata; the overlay would
+        # otherwise let an uploader rewrite cells we render below.
+        basename = _strip_ansi(basename)[:80]
+        size = _human_size(f.get("bytes", 0))
+        is_cur = (i == flow.picker_idx)
+        rows.append(Text.assemble(
+            (f"{cursor} ", PALETTE["accent"]),
+            (f"{marker} ", PALETTE["ok"] if i in flow.picker_marked else PALETTE["metadata"]),
+            (f"[{size:>9}] ", PALETTE["metadata"]),
+            (basename, PALETTE["accent"] if is_cur else ""),
+        ))
+    if end < len(flow.files):
+        rows.append(Text(f"… {len(flow.files) - end} more below", style=PALETTE["metadata"]))
+    title = f"Real-Debrid · pick files ({len(flow.picker_marked)} of {len(flow.files)} marked)"
+    return Panel(
+        Group(*rows) if rows else Text("(no files)", style=PALETTE["metadata"]),
+        title=Text(title, style=PALETTE["headline"]),
+        border_style=PALETTE["accent"],
+        padding=(1, 2),
+    )
+
+
+def render_rd_waiting(state: _AppState):
+    """Phase text + spinner shown while the RD worker runs the network flow.
+    Reuses the persistent verb spinner from `_AppState` so the dots animate."""
+    flow = state.rd_flow
+    if flow is None:
+        return Text("(no active RD flow)", style=PALETTE["metadata"])
+    text = Text(flow.phase + "…", style=PALETTE["headline"])
+    if state._verb_spinner is None:
+        state._verb_spinner = Spinner("dots", text=text)
+    else:
+        state._verb_spinner.update(text=text)
+    return Group(Text(""), Text(""), state._verb_spinner, Text(""))
+
+
 def render_body(state: _AppState):
     if state.mode == MAGNET_VIEW:
         return render_magnet_panel(state)
     if state.mode == HELP:
         return render_help_panel()
+    if state.mode == RD_PICKER:
+        return render_rd_picker(state)
+    if state.mode == RD_WAITING:
+        return render_rd_waiting(state)
     if not _visible_results(state) and state.mode != LOADING:
         return render_empty_state(state)
     return render_table(state)
@@ -819,8 +968,8 @@ _FOOTER_HINTS = {
     FILTER:     "type to narrow · enter accept · esc cancel",
     SEARCH:     "type query · enter search · esc cancel",
     MAGNET_VIEW: "any key to return to results · q quit",
-    RD_PICKER:  "0-9 pick · a all · enter confirm · esc cancel",
-    RD_WAITING: "⏳ waiting on Debrid · esc cancel",
+    RD_PICKER:  "↑↓ move · space toggle · a toggle all · ⏎ confirm · esc cancel · q quit",
+    RD_WAITING: "⏳ Real-Debrid working · q quit",
     HELP:       "any key to dismiss · q quit",
 }
 
@@ -855,6 +1004,129 @@ def _rotate_verb(state: _AppState) -> None:
     if now - state.verb_set_at >= VERB_ROTATE_SECONDS:
         state.current_verb = random.choice(SEARCH_VERBS)
         state.verb_set_at = now
+
+
+def _kick_off_rd(state: _AppState, entry: dict) -> threading.Thread | None:
+    """Start the Real-Debrid worker for `entry`. Returns the thread, or None
+    when the flow couldn't even start (no token configured) — in that case
+    the toast carries the reason and the mode stays in RESULTS.
+
+    The worker drives the full RD flow inside the Live render: progress
+    surfaces as the spinner phase text, the multi-file picker as a TUI
+    overlay (RD_PICKER mode), and completion as a toast. No more
+    suspending Live to fall back to print/input prompts."""
+    config = _load_config()
+    token = _resolve_rd_token(config)
+    if not token:
+        _set_toast(
+            state,
+            "Real-Debrid token not configured. Run `torrent-hound --configure-rd` "
+            "or set RD_TOKEN.",
+        )
+        return None
+    action = _resolve_rd_action(config)
+
+    state.rd_flow = _RDFlow()
+    state.mode = RD_WAITING
+
+    thread = threading.Thread(
+        target=_rd_worker, args=(state, entry, token, action), daemon=True
+    )
+    thread.start()
+    return thread
+
+
+def _rd_worker(state: _AppState, entry: dict, token: str, action: str) -> None:
+    """RD orchestrator running on a worker thread. Drives the
+    add-magnet → info → (picker) → select → info → unrestrict → dispatch
+    sequence; mutates `state.rd_flow.phase` for the spinner; hands off to
+    the picker by flipping `state.mode = RD_PICKER` and waiting on
+    `selection_event`. Surfaces completion (success or error) as a toast
+    and clears `state.rd_flow` before returning."""
+    flow = state.rd_flow
+    if flow is None:
+        return  # cancelled before we got going
+
+    def _finish(message: str) -> None:
+        state.rd_flow = None
+        _set_toast(state, message)
+        state.mode = RESULTS
+
+    try:
+        info_hash = _rd_parse_hash(entry.get("magnet", ""))
+        if info_hash is None:
+            _finish("Couldn't parse info-hash from magnet.")
+            return
+
+        flow.phase = "Submitting to Real-Debrid"
+        torrent_id = _rd_add_magnet(entry["magnet"], token=token)
+
+        flow.phase = "Fetching torrent info"
+        info = _rd_get_info(torrent_id, token=token) or {}
+        files = info.get("files") or []
+
+        if not files:
+            _finish(
+                "Real-Debrid is still resolving the magnet. "
+                "Run rd again in a moment."
+            )
+            return
+
+        already_selected = any(f.get("selected") == 1 for f in files)
+        if not already_selected:
+            if len(files) == 1:
+                flow.phase = "Selecting file"
+                _rd_select_files(torrent_id, "all", token=token)
+            else:
+                # Hand off to picker. Default to all-marked so a confirm
+                # without any toggles matches the legacy "Enter == all" UX.
+                flow.files = files
+                flow.picker_idx = 0
+                flow.picker_marked = set(range(len(files)))
+                flow.selection_event = threading.Event()
+                state.mode = RD_PICKER
+                flow.selection_event.wait()
+                state.mode = RD_WAITING
+
+                selection = flow.pending_selection
+                if selection == "cancel" or not isinstance(selection, list):
+                    _finish("Real-Debrid cancelled.")
+                    return
+
+                ids = ",".join(str(files[i]["id"]) for i in selection)
+                flow.phase = f"Selecting {len(selection)} file(s)"
+                _rd_select_files(torrent_id, ids, token=token)
+
+            flow.phase = "Refreshing torrent info"
+            info = _rd_get_info(torrent_id, token=token) or {}
+        else:
+            flow.phase = "Re-using prior selection"
+
+        bad_statuses = ("error", "magnet_error", "virus", "dead")
+        status = info.get("status")
+        if status in bad_statuses:
+            _finish(f"Real-Debrid marked the torrent as {status}.")
+            return
+
+        links = info.get("links") or []
+        if not links:
+            _finish(
+                f"Real-Debrid still processing (status: {status}). "
+                "Run rd again in a moment."
+            )
+            return
+
+        flow.phase = f"Fetching {len(links)} direct link(s)"
+        direct_links = [_rd_unrestrict(link, token=token) for link in links]
+
+        flow.phase = "Dispatching"
+        msg = _rd_dispatch(direct_links, action)
+        _finish(msg)
+
+    except _RdError as e:
+        _finish(str(e))
+    except (KeyError, TypeError) as e:
+        _finish(f"Unexpected Real-Debrid response shape ({type(e).__name__}). Try again.")
 
 
 def _kick_off_fetch(state: _AppState) -> threading.Thread:
@@ -906,7 +1178,9 @@ def run_app() -> None:
                 if not handle_key(state, key):
                     break
             if state.rd_request_entry is not None:
-                _run_rd_suspended(live, state)
+                entry = state.rd_request_entry
+                state.rd_request_entry = None
+                _kick_off_rd(state, entry)
             if state.refetch_request:
                 state.refetch_request = False
                 _kick_off_fetch(state)
@@ -920,31 +1194,3 @@ def run_app() -> None:
             live.update(render(state))
 
 
-def _run_rd_suspended(live: Live, state: _AppState) -> None:
-    """Drop out of the Live render so _cmd_rd's prints/inputs can drive the
-    terminal directly, then restore the Live screen on completion. First-ship
-    integration; a fully-native RD picker lands in a later iteration."""
-    entry = state.rd_request_entry
-    state.rd_request_entry = None
-    live.stop()
-    # Restore the cbreak'd terminal to cooked mode so input() inside _cmd_rd
-    # works normally; re-enter cbreak when Live restarts.
-    fd = sys.stdin.fileno()
-    saved = termios.tcgetattr(fd)
-    try:
-        # cooked mode for _cmd_rd
-        cooked = termios.tcgetattr(fd)
-        # tcgetattr returns the current attrs; we want canonical mode + echo.
-        # Easier: temporarily restore the attrs that were set BEFORE cbreak() —
-        # we don't have those here, so ask termios for sane defaults.
-        cooked[3] |= termios.ICANON | termios.ECHO  # lflag
-        termios.tcsetattr(fd, termios.TCSADRAIN, cooked)
-        try:
-            _cmd_rd(entry)
-        except Exception as e:  # noqa: BLE001 — defence; RD path has many failure modes
-            print(f"Real-Debrid error: {e}")
-        input("\n[press enter to return to torrent-hound]")
-        _set_toast(state, "Real-Debrid action complete")
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, saved)
-        live.start()
