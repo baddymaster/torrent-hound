@@ -74,6 +74,20 @@ def test_tpb_page_is_empty_results_false_when_table_missing(th):
     assert th._tpb_page_is_empty_results(b"") is False
 
 
+def test_parse_tpb_html_populates_metadata_from_name(th, tpb_ubuntu_html):
+    """Eager TPB metadata: name + whatever release tags the row name's
+    regex catches. Detail-page fields fill later via lazy fetch."""
+    results = th._parse_tpb_html(tpb_ubuntu_html, limit=3)
+    assert len(results) == 3
+    for r in results:
+        md = r["metadata"]
+        assert md["name"] == r["name"]
+        # `released` only present if the name has a 19xx/20xx year — most
+        # ubuntu rows don't, so we assert only correctness when present.
+        if "released" in md:
+            assert md["released"].isdigit() and len(md["released"]) == 4
+
+
 def test_build_results_table_strips_wide_unicode(th):
     """Emoji and wide Unicode in torrent names must be stripped to prevent
     table misalignment."""
