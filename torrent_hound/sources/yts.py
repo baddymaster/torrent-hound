@@ -27,7 +27,7 @@ _YTS_API_ONLY_HOSTS = {'movies-api.accel.li'}
 # and silently produce zero results. The dedicated `quality=` API parameter
 # is the right channel for this. We extract recognised quality tokens out of
 # the query and route them to that parameter so users can keep typing
-# fluent queries like "the matrix 1080p" and get expected results.
+# fluent queries like "<title> 1080p" and get expected results.
 # Canonical YTS quality values (case-sensitive on the API side; we normalise
 # user input to these).
 _YTS_QUALITY_VALUES = {
@@ -146,10 +146,10 @@ def searchYTS(search_string='', quiet_mode=False, limit=10, timeout=8, progress=
             if data.get("status") == "ok":
                 # API responded successfully but has no usable matches → genuine
                 # empty, not a mirror failure. Two shapes both land here:
-                #   movie_count==0 + no `movies` key (e.g. "ubuntu" — no hits)
-                #   movie_count>0 but `movies` array missing/empty (e.g. wrong
-                #     year: "the devil wears prada 2026" pre-counts the 2006
-                #     match then filters it out).
+                #   movie_count==0 + no `movies` key — no title hits at all.
+                #   movie_count>0 but `movies` array missing/empty — title
+                #     scored a hit but post-filter (e.g. wrong-year token in
+                #     a query) dropped every variant.
                 # Either way, walking more mirrors can't conjure results;
                 # they all share the same backend.
                 movies = data.get("data", {}).get("movies") or []

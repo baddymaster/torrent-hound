@@ -13,8 +13,8 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **EZTV walks every IMDB tvSeries candidate for a query** instead of
   bailing on the first match. IMDB's suggestion endpoint returns multiple
-  series for franchise queries (e.g. "kung fu panda" → three different
-  tvSeries IDs); EZTV only hosts torrents under some of them. Picking
+  series for franchise queries (one query can yield several distinct
+  `tvSeries` IDs); EZTV only hosts torrents under some of them. Picking
   only the first match meant zero results for queries the user could
   clearly see content for in EZTV's web UI. We now aggregate across
   candidates in suggestion order, stopping early once we have enough
@@ -50,13 +50,13 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - **EZTV no longer reports "all mirrors failed" for queries that resolve to
-  an IMDB ID with zero EZTV torrents** (e.g. `kung fu panda` — IMDB has the
-  TV show but EZTV doesn't host any episodes for it). The API responds
-  successfully with `torrents_count: 0`; we now classify that as `empty` and
-  stop probing instead of walking all four mirrors and emitting `failed`.
-  Same class of bug as the TPB and YTS fixes shipped in v3.0.0; this final
-  case slipped through because EZTV's existing `empty` path only covered
-  the no-IMDB-match scenario.
+  an IMDB ID with zero EZTV torrents** — common when IMDB matches a show
+  EZTV simply doesn't host. The API responds successfully with
+  `torrents_count: 0`; we now classify that as `empty` and stop probing
+  instead of walking all four mirrors and emitting `failed`. Same class
+  of bug as the TPB and YTS fixes shipped in v3.0.0; this final case
+  slipped through because EZTV's existing `empty` path only covered the
+  no-IMDB-match scenario.
 
 ## [3.0.1] - 2026-04-28
 

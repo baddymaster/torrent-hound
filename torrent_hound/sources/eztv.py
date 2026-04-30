@@ -52,11 +52,11 @@ def _imdb_lookup_candidates(query, timeout=8, limit=5):
     suggestion order (most relevant first). Returns an empty list on any
     failure (network / non-JSON / no tvSeries match).
 
-    Multi-candidate is critical for franchise queries like "kung fu panda"
-    where IMDB has three separate tvSeries entries (Legends of Awesomeness
-    2011, The Paws of Destiny 2018, The Dragon Knight 2022). EZTV's API is
-    keyed by IMDB ID, so picking only the first match misses everything
-    tagged under the other two.
+    Multi-candidate is critical for franchise queries where IMDB has
+    several distinct `tvSeries` entries (e.g. multiple spin-offs or
+    sequels under one umbrella name). EZTV's API is keyed by IMDB ID,
+    so picking only the first suggestion misses everything tagged under
+    the others.
     """
     slug = query.strip().replace(' ', '_').lower()
     if not slug:
@@ -166,9 +166,10 @@ def _fetch_eztv_torrents_for_id(imdb_id, domain, timeout):
 def searchEZTV(search_string='', quiet_mode=False, limit=10, timeout=8, progress=None):
     """Search EZTV via the IMDB-ID bridge with optional episode/quality
     filtering. When IMDB returns multiple tvSeries candidates for a query
-    (e.g. "kung fu panda" → three separate series), we walk the candidate
-    list in order, aggregating torrents from any that EZTV actually hosts.
-    Stops early once we have plenty of headroom for filtering."""
+    (common for franchise queries that span several spin-offs), we walk
+    the candidate list in order, aggregating torrents from any that EZTV
+    actually hosts. Stops early once we have plenty of headroom for
+    filtering."""
     clean_query, season, episode, filters = _parse_episode_query(search_string)
 
     candidates = _imdb_lookup_candidates(clean_query, timeout=timeout)

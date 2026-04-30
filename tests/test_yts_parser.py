@@ -45,13 +45,13 @@ def test_parse_yts_json_empty_on_no_movies(th):
 
 
 def test_extract_yts_quality_pulls_token(th):
-    assert th._extract_yts_quality("the matrix 1080p") == ("the matrix", "1080p")
-    assert th._extract_yts_quality("matrix 720p") == ("matrix", "720p")
-    assert th._extract_yts_quality("matrix 2160p") == ("matrix", "2160p")
+    assert th._extract_yts_quality("foo 1080p") == ("foo", "1080p")
+    assert th._extract_yts_quality("foo bar 720p") == ("foo bar", "720p")
+    assert th._extract_yts_quality("foo bar 2160p") == ("foo bar", "2160p")
 
 
 def test_extract_yts_quality_no_token_when_query_is_plain(th):
-    assert th._extract_yts_quality("the matrix") == ("the matrix", None)
+    assert th._extract_yts_quality("foo bar") == ("foo bar", None)
     assert th._extract_yts_quality("foo bar baz") == ("foo bar baz", None)
     assert th._extract_yts_quality("") == ("", None)
 
@@ -75,7 +75,7 @@ def test_extract_yts_quality_handles_multi_token_x265(th):
 def test_extract_yts_quality_unknown_quality_left_in_query(th):
     # Unknown quality tokens (not in YTS's enum) stay in the query so the
     # API can decide. We don't try to invent a quality that doesn't exist.
-    assert th._extract_yts_quality("matrix 9999p") == ("matrix 9999p", None)
+    assert th._extract_yts_quality("foo 9999p") == ("foo 9999p", None)
 
 
 def test_parse_yts_json_does_not_rewrite_url_when_served_by_api_host(th, yts_interstellar_json):

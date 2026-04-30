@@ -222,15 +222,15 @@ def test_imdb_lookup_candidates_returns_all_tv_series_in_suggestion_order(th):
     ranking — the first match isn't guaranteed to be the one EZTV hosts."""
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"d": [
-        {"id": "tt0441773", "qid": "movie",    "l": "Kung Fu Panda"},
-        {"id": "tt1545214", "qid": "tvSeries", "l": "Kung Fu Panda: Legends of Awesomeness"},
-        {"id": "tt1702433", "qid": "tvShort",  "l": "Kung Fu Panda Holiday"},
-        {"id": "tt8271176", "qid": "tvSeries", "l": "Kung Fu Panda: The Paws of Destiny"},
-        {"id": "tt18783984", "qid": "tvSeries", "l": "Kung Fu Panda: The Dragon Knight"},
+        {"id": "tt000A", "qid": "movie",    "l": "A"},
+        {"id": "tt000B", "qid": "tvSeries", "l": "B"},
+        {"id": "tt000C", "qid": "tvShort",  "l": "C"},
+        {"id": "tt000D", "qid": "tvSeries", "l": "D"},
+        {"id": "tt000E", "qid": "tvSeries", "l": "E"},
     ]}
     with patch.object(th.requests, "get", return_value=mock_resp):
-        result = th._imdb_lookup_candidates("kung fu panda")
-    assert result == ["1545214", "8271176", "18783984"]
+        result = th._imdb_lookup_candidates("franchise query")
+    assert result == ["000B", "000D", "000E"]
 
 
 def test_imdb_lookup_candidates_respects_limit(th):
@@ -299,8 +299,8 @@ def test_searchEZTV_shows_error_when_imdb_fails(th, capsys):
 
 
 def test_searchEZTV_emits_empty_when_api_returns_zero_torrents(th, eztv_no_hits_json):
-    """If IMDB matches but EZTV's API returns torrents_count: 0 (e.g. Kung Fu
-    Panda — IMDB has the entry but EZTV doesn't host any episodes), the source
+    """If IMDB matches but EZTV's API returns torrents_count: 0 (the show
+    exists on IMDB but EZTV doesn't host any episodes for it), the source
     must emit `empty` and stop probing. Walking more mirrors can't conjure
     torrents — they all share the same backend keyed by IMDB ID."""
     events = []
@@ -309,7 +309,7 @@ def test_searchEZTV_emits_empty_when_api_returns_zero_torrents(th, eztv_no_hits_
     def fake_get(url, **kwargs):
         if "imdb.com" in url:
             resp = MagicMock()
-            resp.json.return_value = {"d": [{"id": "tt1545214", "qid": "tvSeries", "l": "Kung Fu Panda"}]}
+            resp.json.return_value = {"d": [{"id": "tt000A", "qid": "tvSeries", "l": "A"}]}
             return resp
         eztv_call_count[0] += 1
         resp = MagicMock()
@@ -317,7 +317,7 @@ def test_searchEZTV_emits_empty_when_api_returns_zero_torrents(th, eztv_no_hits_
         return resp
 
     with patch.object(th.requests, "get", side_effect=fake_get):
-        results = th.searchEZTV("kung fu panda", quiet_mode=True, progress=events.append)
+        results = th.searchEZTV("any query", quiet_mode=True, progress=events.append)
 
     assert results == []
     types = [e["type"] for e in events]
@@ -329,9 +329,9 @@ def test_searchEZTV_emits_empty_when_api_returns_zero_torrents(th, eztv_no_hits_
 
 def test_searchEZTV_falls_through_to_next_imdb_candidate_when_first_is_empty(th, eztv_no_hits_json, eztv_severance_json):
     """When the first IMDB tvSeries match has zero torrents on EZTV, `searchEZTV`
-    must walk to the next candidate. Real-world: "kung fu panda" — first tvSeries
-    is "Legends of Awesomeness" (no EZTV torrents); second is "Paws of Destiny"
-    (41 torrents)."""
+    must walk to the next candidate. Common with franchise queries where
+    IMDB returns multiple distinct series but EZTV only hosts torrents
+    under some of them."""
     events = []
     eztv_calls_per_id = {}
     # Build a "complete on page 1" variant so pagination terminates immediately

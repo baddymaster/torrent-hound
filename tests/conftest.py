@@ -52,9 +52,9 @@ def eztv_severance_json():
 
 @pytest.fixture
 def eztv_no_hits_json():
-    """Real captured EZTV API response for an IMDB ID EZTV doesn't host
-    (here: Kung Fu Panda, IMDB 1545214). API returns torrents_count: 0
-    with no `torrents` key — must be classified as empty, not failed."""
+    """Real captured EZTV API response for an IMDB ID EZTV doesn't host.
+    API returns torrents_count: 0 with no `torrents` key — must be
+    classified as empty, not failed."""
     return json.loads((FIXTURES / "eztv_search_no_hits.json").read_text())
 
 
