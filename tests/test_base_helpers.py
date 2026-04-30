@@ -90,3 +90,23 @@ def test_extract_release_tags_repack_proper_alias(th):
     """PROPER and REPACK both flip the repack flag."""
     assert th._extract_release_tags("foo PROPER")["repack"] is True
     assert th._extract_release_tags("foo REPACK")["repack"] is True
+
+
+def test_metadata_typeddict_constructs_with_partial_keys(th):
+    """Metadata is total=False — any subset of keys constructs OK."""
+    md: th.Metadata = {"name": "foo"}
+    assert md["name"] == "foo"
+    md2: th.Metadata = {"imdb_code": "tt0123", "runtime": "2h 0m 0s"}
+    assert md2["imdb_code"] == "tt0123"
+
+
+def test_result_can_carry_metadata_at_runtime(th):
+    """Result rows are plain dicts at runtime; parsers attach a `metadata`
+    key. The Result TypedDict doesn't formally declare it (Python 3.10
+    lacks NotRequired), but runtime is permissive."""
+    r = {
+        "name": "x", "link": "y", "seeders": 1, "leechers": 0,
+        "size": "1G", "ratio": "inf", "magnet": "magnet:?",
+        "metadata": {"name": "x"},
+    }
+    assert r["metadata"]["name"] == "x"

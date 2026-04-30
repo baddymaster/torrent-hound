@@ -10,6 +10,44 @@ from datetime import datetime, timezone
 from typing import Protocol, TypedDict
 
 
+class Metadata(TypedDict, total=False):
+    """Normalised per-row metadata. All fields optional (`total=False`) —
+    sources fill what they capture eagerly; lazy fetchers fill the rest.
+    The TUI's `v` overlay iterates a fixed key order and dashes anything
+    missing.
+
+    Internal keys (prefixed `_`) drive the lazy-fetch worker and are
+    never rendered."""
+    # Item-level
+    name: str
+    released: str             # 'YYYY' or 'DD-MM-YYYY'
+    season: int
+    episode: int
+    imdb_code: str            # 'tt0123456'
+    imdb_rating: float
+    genre: str
+    runtime: str              # pre-formatted 'Xh Ym Zs'
+    director: str
+    cast: str
+    summary: str
+    # Release-level
+    quality: str
+    codec: str
+    source_type: str
+    audio: str
+    repack: bool
+    # Provenance
+    uploader: str
+    uploaded: str             # pre-formatted 'DD-MM-YYYY'
+    files: int
+    category: str
+    misc: dict
+    # Internal — never rendered, used only by the lazy-fetch worker
+    _yts_movie_id: int
+    _lazy_fetched: bool
+    _lazy_fetching: bool
+
+
 class Result(TypedDict):
     name: str
     link: str
@@ -18,6 +56,11 @@ class Result(TypedDict):
     size: str
     ratio: str
     magnet: str
+    # `metadata: Metadata` would be ideal here, but Python 3.10 doesn't
+    # have `typing.NotRequired` for marking it optional, and TypedDicts
+    # without `total=False` would force every Result construction site
+    # to set it. Parsers attach `metadata` at runtime; readers use
+    # `.get("metadata") or {}`.
 
 
 class Source(Protocol):

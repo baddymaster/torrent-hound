@@ -105,6 +105,8 @@ from .realdebrid import (  # noqa: F401
 )
 from .sources import _SOURCES, searchAllSites  # noqa: F401
 from .sources.base import (  # noqa: F401
+    Metadata,
+    Result,
     _extract_release_tags,
     _fmt_date,
     _fmt_runtime,
