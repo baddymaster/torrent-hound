@@ -13,9 +13,10 @@ from .base import _extract_release_tags, _fmt_date, _fmt_runtime, _normalise_cod
 _DEFAULT_QUERY = 'ubuntu'
 
 # `Movie.Title.2024.1080p` or `Movie Title (2024) [...]` — pull the
-# rightmost 19xx/20xx so episode-numeric tokens (e.g. `1984`) don't
-# false-match for content that's actually from a different decade.
-_YEAR_RE = re.compile(r'\b(19\d{2}|20\d{2})\b')
+# rightmost plausible release year. Capped at 2030 so titles whose name
+# contains a far-future year (e.g. `Blade Runner 2049`, `2001: A Space
+# Odyssey`) don't get the title-year mistaken for a release date.
+_YEAR_RE = re.compile(r'\b(19\d{2}|20[0-2]\d|2030)\b')
 
 # TPB domains tried in order. Mirrors churn often; add new ones to the front
 # when they come up, drop dead ones from the tail.
@@ -153,14 +154,24 @@ _PLOT_RE     = re.compile(r'^\s*Plot:\s*(.+?)(?=\n\s*\n|\n\s*[A-Z]+:|\Z)', re.MU
 #   Directors
 #   Name One
 #   Name Two
-#   <blank>
+#   <blank>           ← stop on blank
+# OR
+#   Directors
+#   Name One
+#   Writers           ← stop on next known heading (no blank line between)
+#   ...
+_NEXT_HEADING = r'(?:Stars?|Writers?|Cast|Genres?|Plot|Synopsis|Storyline)'
 _DIRECTOR_BLOCK_RE = re.compile(
-    r'^\s*Directors?\s*$\n((?:^\s*[^\s:][^\n:]*$\n?)+?)(?=^\s*$|\Z)',
-    re.MULTILINE,
+    r'^\s*Directors?\s*$\n'
+    r'((?:^\s*[^\s:][^\n:]*$\n?)+?)'
+    r'(?=^\s*$|^\s*' + _NEXT_HEADING + r'\s*$|\Z)',
+    re.MULTILINE | re.IGNORECASE,
 )
 _STARS_BLOCK_RE = re.compile(
-    r'^\s*Stars?\s*$\n((?:^\s*[^\s:][^\n:]*$\n?)+?)(?=^\s*$|\Z)',
-    re.MULTILINE,
+    r'^\s*Stars?\s*$\n'
+    r'((?:^\s*[^\s:][^\n:]*$\n?)+?)'
+    r'(?=^\s*$|^\s*' + _NEXT_HEADING + r'\s*$|\Z)',
+    re.MULTILINE | re.IGNORECASE,
 )
 # Slash-separated genre line on its own (no `Genre:` prefix). Conservative —
 # require ≥ 3 segments to avoid false positives on "I/O" or "and/or" prose.
@@ -219,8 +230,11 @@ _AUDIO_CHANNELS_RE = re.compile(
     re.IGNORECASE,
 )
 # Audio codec — first recognised audio format in the description.
+# DDP/DD with optional channel layout: `DDP`, `DDP5`, `DDP5.1`, `DDP.5`,
+# `DDP.5.1`, `DD7.1` etc. all match.
 _AUDIO_CODEC_RE = re.compile(
-    r'\b(AAC|FLAC|MP3|Opus|TrueHD|Atmos|DTS(?:-HD)?|E-?AC-?3|AC-?3|DDP?\d?(?:\.\d)?)\b',
+    r'\b(AAC|FLAC|MP3|Opus|TrueHD|Atmos|DTS(?:-HD)?|E-?AC-?3|AC-?3|'
+    r'DDP?(?:[.]?\d(?:\.\d)?)?)\b',
     re.IGNORECASE,
 )
 # Subtitles — bracketed `[SUBTITLES]:` (R3, R10), aligned `Subtitle(s) : list`
@@ -336,7 +350,13 @@ def _extract_subtitles(desc: str) -> str | None:
     if (m := _SUBTITLES_RE.search(desc)):
         text = m.group(1).strip().rstrip(",")
         text = re.sub(r'\s*\(SRT File\)\s*$', '', text, flags=re.IGNORECASE).strip()
-        if text and not text.startswith(("http://", "https://", "www.")):
+        # Reject sentinel non-values that uploaders sometimes write:
+        # URLs, single dashes, "n/a", "none", "not available".
+        if (
+            text
+            and not text.startswith(("http://", "https://", "www."))
+            and text.lower().strip("-.") not in ("", "none", "n/a", "na", "not available", "no")
+        ):
             return text
     # Multi-line `srt .... Language` rows (R4 / Subtitles section)
     langs = _SRT_LANGUAGE_RE.findall(desc)
