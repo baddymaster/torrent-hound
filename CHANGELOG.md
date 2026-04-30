@@ -7,6 +7,21 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`v` keystroke — metadata overlay.** Shows a normalised, source-consistent
+  metadata panel for the highlighted torrent: name, release date, IMDB
+  link + rating, genre, runtime, quality / codec / audio / repack,
+  director, cast, uploader, upload date, file count, summary, and a
+  free-form misc section for unstructured `LABEL: value` lines from
+  descriptions. Eager fields populate during search; TPB detail-page
+  data and YTS `movie_details.json` are lazy-fetched on `v` press, with
+  a rotating spinner footer during the fetch and an inline retry
+  message on failure. EZTV results inherit cast and series start year
+  from the IMDB suggestion items we already query during search. All
+  dates in the panel are formatted `DD-MM-YYYY`; runtime as `Xh Ym Zs`;
+  IMDB code as a clickable URL.
+
 ## [3.1.0] - 2026-04-30
 
 ### Changed
