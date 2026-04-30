@@ -912,6 +912,34 @@ def test_metadata_view_any_other_key_returns_to_results(reset_state):
     assert state.mode == RESULTS
 
 
+def test_v_keystroke_enters_metadata_view(reset_state):
+    _populate_results(3)
+    state = _AppState(mode=RESULTS, selected_idx=1)
+    # Use a non-TPB/YTS source so no worker thread spins up
+    state_module.results[1]["source"] = "EZTV"
+    state_module.results[1]["metadata"] = {"name": "test"}
+    handle_key(state, "v")
+    assert state.mode == METADATA_VIEW
+    assert state.metadata_view_entry is state_module.results[1]
+    assert state.metadata_view_scroll_top == 0
+    assert state.metadata_view_error is None
+
+
+def test_v_keystroke_kicks_off_lazy_fetch_for_tpb(reset_state):
+    import time as _t
+    _populate_results(2)
+    state_module.results[0]["source"] = "TPB"
+    state_module.results[0]["metadata"] = {}
+    state = _AppState(mode=RESULTS, selected_idx=0)
+    with patch("torrent_hound.tui._fetch_tpb_metadata",
+               return_value={"uploader": "x"}) as mfetch:
+        handle_key(state, "v")
+    deadline = _t.monotonic() + 1.0
+    while mfetch.call_count == 0 and _t.monotonic() < deadline:
+        _t.sleep(0.005)
+    mfetch.assert_called_once()
+
+
 def test_kick_off_rd_no_token_toasts_and_returns_none(reset_state):
     """No token configured → friendly toast, no thread started, mode unchanged."""
     state = _AppState(mode=RESULTS)

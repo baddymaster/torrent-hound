@@ -475,6 +475,14 @@ def _dispatch_command(state: _AppState, cmd: str) -> bool:
             state.magnet_view_text = entry.get("magnet", "")
             state.magnet_view_name = entry.get("name", "")
             state.mode = MAGNET_VIEW
+    elif cmd == "v":
+        entry = _selected_entry(state)
+        if entry is not None:
+            state.metadata_view_entry = entry
+            state.metadata_view_scroll_top = 0
+            state.metadata_view_error = None
+            state.mode = METADATA_VIEW
+            _kick_off_metadata_fetch(state, entry)
     elif cmd == "?":
         state.mode = HELP
     elif cmd in _ENTRY_ACTIONS:
@@ -905,6 +913,7 @@ _HELP_SECTIONS = [
         ("c · ⏎",    "copy magnet to clipboard"),
         ("cs",        "copy magnet + open Seedr.cc"),
         ("m",         "show full magnet in overlay"),
+        ("v",         "show normalised metadata for this torrent in an overlay"),
         ("o",         "open torrent page in browser"),
         ("d",         "send magnet to default torrent client"),
         ("rd",        "submit to Real-Debrid"),
@@ -1016,10 +1025,11 @@ def render_toast(state: _AppState) -> Text:
 # adapts to the screen the user is on rather than dumping a static legend.
 _FOOTER_HINTS = {
     LOADING:    "q quit",
-    RESULTS:    "↑↓ move · ⏎/c copy · cs seedr · m magnet · o open · d download · r repeat · rd real-debrid · s search · / filter · ? help · q quit",
+    RESULTS:    "↑↓ move · ⏎/c copy · cs seedr · m magnet · v metadata · o open · d download · r repeat · rd real-debrid · s search · / filter · ? help · q quit",
     FILTER:     "type to narrow · enter accept · esc cancel",
     SEARCH:     "type query · enter search · esc cancel",
     MAGNET_VIEW: "any key to return to results · q quit",
+    METADATA_VIEW: "↑↓ scroll · esc/any key to return to results · q quit",
     RD_PICKER:  "↑↓ move · space toggle · a toggle all · ⏎ confirm · esc cancel · q quit",
     RD_WAITING: "⏳ Real-Debrid working · q quit",
     HELP:       "any key to dismiss · q quit",
