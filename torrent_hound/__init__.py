@@ -104,7 +104,13 @@ from .realdebrid import (  # noqa: F401
     _strip_ansi,
 )
 from .sources import _SOURCES, searchAllSites  # noqa: F401
-from .sources.base import _format_bytes, removeAndReplaceSpaces  # noqa: F401
+from .sources.base import (  # noqa: F401
+    _extract_release_tags,
+    _fmt_date,
+    _fmt_runtime,
+    _format_bytes,
+    removeAndReplaceSpaces,
+)
 from .sources.eztv import (  # noqa: F401
     EZTV_DOMAINS,
     _eztv_slug,
