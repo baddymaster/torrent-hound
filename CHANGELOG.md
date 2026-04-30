@@ -7,6 +7,8 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-04-30
+
 ### Changed
 
 - **EZTV walks every IMDB tvSeries candidate for a query** instead of
