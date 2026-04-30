@@ -940,6 +940,99 @@ def test_v_keystroke_kicks_off_lazy_fetch_for_tpb(reset_state):
     mfetch.assert_called_once()
 
 
+def test_render_metadata_panel_renders_eager_fields(reset_state):
+    """Smoke test: panel construction doesn't blow up and the body
+    contains expected field labels and values."""
+    from rich.console import Console
+
+    from torrent_hound.tui import render_metadata_panel
+    entry = {
+        "name": "Test", "source": "YTS", "link": "x",
+        "size": "2.0 GB", "seeders": 120, "leechers": 8,
+        "metadata": {
+            "name": "test name",
+            "released": "2024",
+            "imdb_code": "tt0123456",
+            "imdb_rating": 8.5,
+            "genre": "Drama",
+            "runtime": "2h 0m 0s",
+            "quality": "1080p",
+            "uploader": "yify",
+        },
+    }
+    state = _AppState(mode=METADATA_VIEW, metadata_view_entry=entry)
+    panel = render_metadata_panel(state)
+    buf = Console(record=True, width=120, height=60)
+    buf.print(panel)
+    out = buf.export_text()
+    assert "Released" in out
+    assert "2024" in out
+    assert "https://www.imdb.com/title/tt0123456/" in out
+    assert "8.5" in out
+    assert "Genre" in out
+    assert "Runtime" in out
+    assert "yify" in out
+
+
+def test_render_metadata_panel_dashes_missing_fields(reset_state):
+    """Sparse entries dash everything we don't have."""
+    from rich.console import Console
+
+    from torrent_hound.tui import render_metadata_panel
+    entry = {
+        "name": "x", "source": "TPB", "link": "y",
+        "size": "1 GB", "seeders": 1, "leechers": 1,
+        "metadata": {"name": "x"},
+    }
+    state = _AppState(mode=METADATA_VIEW, metadata_view_entry=entry)
+    panel = render_metadata_panel(state)
+    buf = Console(record=True, width=120, height=60)
+    buf.print(panel)
+    out = buf.export_text()
+    assert "—" in out
+
+
+def test_render_metadata_panel_shows_loading_footer(reset_state):
+    """While loading, the panel footer carries the rotating verb + spinner."""
+    from rich.console import Console
+
+    from torrent_hound.tui import render_metadata_panel
+    entry = {
+        "source": "TPB", "link": "x",
+        "size": "1 GB", "seeders": 1, "leechers": 1,
+        "metadata": {"name": "x"},
+    }
+    state = _AppState(
+        mode=METADATA_VIEW, metadata_view_entry=entry,
+        metadata_view_loading=True, current_verb="Sniffing the trackers",
+    )
+    panel = render_metadata_panel(state)
+    buf = Console(record=True, width=120, height=60)
+    buf.print(panel)
+    out = buf.export_text()
+    assert "Sniffing the trackers" in out
+
+
+def test_render_metadata_panel_shows_error_footer(reset_state):
+    from rich.console import Console
+
+    from torrent_hound.tui import render_metadata_panel
+    entry = {
+        "source": "TPB", "link": "x",
+        "size": "1 GB", "seeders": 1, "leechers": 1,
+        "metadata": {"name": "x"},
+    }
+    state = _AppState(
+        mode=METADATA_VIEW, metadata_view_entry=entry,
+        metadata_view_error="fetch failed",
+    )
+    panel = render_metadata_panel(state)
+    buf = Console(record=True, width=120, height=60)
+    buf.print(panel)
+    out = buf.export_text()
+    assert "fetch failed" in out
+
+
 def test_kick_off_rd_no_token_toasts_and_returns_none(reset_state):
     """No token configured → friendly toast, no thread started, mode unchanged."""
     state = _AppState(mode=RESULTS)

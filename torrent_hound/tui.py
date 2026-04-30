@@ -951,6 +951,110 @@ def render_help_panel() -> Panel:
     )
 
 
+# Canonical field order + display labels for the metadata panel. Anything
+# not in this list is ignored at render time. The internal `_lazy_*` keys
+# are never rendered.
+_METADATA_FIELD_ORDER = [
+    ("name",        "Name"),
+    ("size",        "Size"),         # synthesised from entry, not metadata dict
+    ("seed_leech",  "Seed/Leech"),   # synthesised
+    ("released",    "Released"),
+    ("season",      "Season"),
+    ("episode",     "Episode"),
+    ("imdb_code",   "IMDB"),
+    ("genre",       "Genre"),
+    ("runtime",     "Runtime"),
+    ("quality",     "Quality"),
+    ("codec",       "Codec"),
+    ("audio",       "Audio"),
+    ("repack",      "Repack"),
+    ("director",    "Director"),
+    ("cast",        "Cast"),
+    ("uploader",    "Uploader"),
+    ("uploaded",    "Uploaded"),
+    ("files",       "Files"),
+    ("category",    "Category"),
+]
+
+
+def _format_metadata_value(key: str, md: dict, entry: dict) -> str:
+    """Per-field rendering. `key` matches the canonical order above; some
+    keys are synthesised from the entry (size, seed_leech) rather than the
+    metadata dict."""
+    if key == "size":
+        return entry.get("size") or "—"
+    if key == "seed_leech":
+        s = entry.get("seeders", "?")
+        leech = entry.get("leechers", "?")
+        return f"{s} / {leech}"
+    val = md.get(key)
+    if val is None or val == "":
+        return "—"
+    if key == "imdb_code":
+        url = f"https://www.imdb.com/title/{val}/"
+        rating = md.get("imdb_rating")
+        if rating:
+            return f"{url} (★ {rating})"
+        return url
+    if key == "repack":
+        return "yes" if val else "no"
+    if key in ("season", "episode", "files"):
+        return str(val)
+    return str(val)
+
+
+def render_metadata_panel(state: _AppState) -> Panel:
+    """Normalised metadata overlay panel. Renders the canonical field grid,
+    optional Summary block, optional Misc block, and a loading/error
+    footer line. Same `Panel` shape as the magnet/help overlays."""
+    entry = state.metadata_view_entry or {}
+    md = entry.get("metadata") or {}
+
+    grid = Table(show_header=False, padding=(0, 1), box=None, expand=False)
+    grid.add_column("label", style=PALETTE["metadata"], no_wrap=True)
+    grid.add_column("value", overflow="fold")
+    for key, label in _METADATA_FIELD_ORDER:
+        grid.add_row(label, _format_metadata_value(key, md, entry))
+
+    body_parts: list = [grid]
+
+    summary = md.get("summary")
+    if summary:
+        body_parts.append(Text(""))
+        body_parts.append(Text("Summary:", style=PALETTE["headline"]))
+        body_parts.append(Text(summary, overflow="fold"))
+
+    misc = md.get("misc") or {}
+    if misc:
+        body_parts.append(Text(""))
+        body_parts.append(Text("Misc:", style=PALETTE["headline"]))
+        misc_grid = Table(show_header=False, padding=(0, 1), box=None, expand=False)
+        misc_grid.add_column("k", style=PALETTE["metadata"], no_wrap=True)
+        misc_grid.add_column("v", overflow="fold")
+        for k, v in misc.items():
+            misc_grid.add_row(k, v)
+        body_parts.append(misc_grid)
+
+    if state.metadata_view_error:
+        body_parts.append(Text(""))
+        body_parts.append(Text(state.metadata_view_error, style=PALETTE["err"]))
+    elif state.metadata_view_loading:
+        body_parts.append(Text(""))
+        body_parts.append(Text.assemble(
+            (state.current_verb + "…", PALETTE["headline"]),
+            (" ", ""),
+            (_trail_spinner_frame(), PALETTE["accent"]),
+        ))
+
+    title = f"metadata · {entry.get('source', '?')}"
+    return Panel(
+        Group(*body_parts),
+        title=Text(title, style=PALETTE["headline"]),
+        border_style=PALETTE["accent"],
+        padding=(1, 2),
+    )
+
+
 def render_rd_picker(state: _AppState) -> Panel:
     """Multi-file selection overlay shown during a Real-Debrid flow.
     Mirrors the look of the magnet/help overlays but with per-row [x]/[ ]
@@ -1008,6 +1112,8 @@ def render_body(state: _AppState):
         return render_magnet_panel(state)
     if state.mode == HELP:
         return render_help_panel()
+    if state.mode == METADATA_VIEW:
+        return render_metadata_panel(state)
     if state.mode == RD_PICKER:
         return render_rd_picker(state)
     if state.mode == RD_WAITING:
