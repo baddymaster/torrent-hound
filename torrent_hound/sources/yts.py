@@ -204,3 +204,52 @@ def searchYTS(search_string='', quiet_mode=False, limit=10, timeout=8, progress=
     if progress:
         progress({"type": "failed"})
     return []
+
+
+# ── lazy detail-fetch ──────────────────────────────────────────────────
+
+def _parse_yts_movie_details(data: dict) -> dict:
+    """Parse a YTS `movie_details.json` response into metadata-shaped fields.
+    Returns the subset of keys we can fill: cast (top 5), summary if a
+    longer `description_full` is available. Empty dict on missing keys.
+    """
+    movie = (data or {}).get("data", {}).get("movie")
+    if not isinstance(movie, dict):
+        return {}
+    md: dict = {}
+    cast = movie.get("cast") or []
+    names: list[str] = []
+    for c in cast:
+        if isinstance(c, dict):
+            n = c.get("name")
+            if isinstance(n, str) and n:
+                names.append(n)
+    if names:
+        md["cast"] = ", ".join(names[:5])
+    longer = movie.get("description_full") or ""
+    shorter = movie.get("summary") or ""
+    if len(longer) > len(shorter) and longer:
+        md["summary"] = longer
+    return md
+
+
+def _fetch_yts_movie_details(movie_id, timeout=8) -> dict:
+    """Lazy fetch `movie_details.json` for one YTS movie. Returns the
+    metadata dict on success, or `{}` on any HTTP / parse failure."""
+    if not movie_id:
+        return {}
+    url = (
+        f"https://movies-api.accel.li/api/v2/movie_details.json"
+        f"?movie_id={int(movie_id)}&with_cast=true"
+    )
+    try:
+        r = requests.get(url, timeout=timeout)
+    except requests.RequestException:
+        return {}
+    if r.status_code != 200:
+        return {}
+    try:
+        data = r.json()
+    except ValueError:
+        return {}
+    return _parse_yts_movie_details(data)

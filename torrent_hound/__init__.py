@@ -141,7 +141,9 @@ from .sources.yts import (  # noqa: F401
     YTS_TRACKERS,
     _build_yts_magnet,
     _extract_yts_quality,
+    _fetch_yts_movie_details,
     _parse_yts_json,
+    _parse_yts_movie_details,
     searchYTS,
 )
 from .ui import (  # noqa: F401

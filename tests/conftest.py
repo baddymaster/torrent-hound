@@ -53,6 +53,13 @@ def tpb_detail_iso_html():
 
 
 @pytest.fixture
+def yts_movie_details_json():
+    """Captured, sanitised `movie_details.json?with_cast=true` response for
+    a YTS movie. Used by the lazy-fetch parser tests."""
+    return json.loads((FIXTURES / "yts_movie_details.json").read_text())
+
+
+@pytest.fixture
 def yts_interstellar_json():
     """Real captured YTS API response for 'interstellar'."""
     return json.loads((FIXTURES / "yts_search_interstellar.json").read_text())

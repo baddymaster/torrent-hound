@@ -1,0 +1,101 @@
+{
+  "status": "ok",
+  "status_message": "Query was successful",
+  "data": {
+    "movie": {
+      "id": 10,
+      "url": "https://yts.bz/movies/13-2010",
+      "imdb_code": "tt0798817",
+      "title": "Some Movie",
+      "title_english": "Some Movie",
+      "title_long": "Some Movie (2010)",
+      "slug": "13-2010",
+      "year": 2010,
+      "rating": 6,
+      "runtime": 91,
+      "genres": [
+        "Action",
+        "Crime",
+        "Drama",
+        "Thriller"
+      ],
+      "like_count": 78,
+      "description_intro": "A short intro.",
+      "description_full": "A short placeholder plot for the fixture, longer than the intro.",
+      "yt_trailer_code": "Y41fFj-P4jI",
+      "language": "en",
+      "mpa_rating": "R",
+      "background_image": "",
+      "background_image_original": "",
+      "small_cover_image": "",
+      "medium_cover_image": "",
+      "large_cover_image": "",
+      "cast": [
+        {
+          "name": "Actor A",
+          "character_name": "Character A",
+          "url_small_image": "https://yts.bz/assets/images/actors/thumb/nm0005458.jpg",
+          "imdb_code": "0005458"
+        },
+        {
+          "name": "Actor B",
+          "character_name": "Character B",
+          "url_small_image": "https://yts.bz/assets/images/actors/thumb/nm1154281.jpg",
+          "imdb_code": "1154281"
+        },
+        {
+          "name": "Actor C",
+          "character_name": "Character C",
+          "url_small_image": "https://yts.bz/assets/images/actors/thumb/nm0004825.jpg",
+          "imdb_code": "0004825"
+        },
+        {
+          "name": "Actor D",
+          "character_name": "Character D",
+          "url_small_image": "https://yts.bz/assets/images/actors/thumb/nm0000620.jpg",
+          "imdb_code": "0000620"
+        }
+      ],
+      "torrents": [
+        {
+          "url": "https://yts.bz/torrent/download/BE046ED20B048C4FB86E15838DD69DADB27C5E8A",
+          "hash": "BE046ED20B048C4FB86E15838DD69DADB27C5E8A",
+          "quality": "720p",
+          "type": "bluray",
+          "is_repack": "0",
+          "video_codec": "x264",
+          "bit_depth": "8",
+          "audio_channels": "2.0",
+          "seeds": 9,
+          "peers": 0,
+          "size": "946.49 MB",
+          "size_bytes": 992466698,
+          "date_uploaded": "2015-10-31 20:46:37",
+          "date_uploaded_unix": 1446320797
+        },
+        {
+          "url": "https://yts.bz/torrent/download/FEE33A702158CD451220BD4F23FC46AD7BC65C4D",
+          "hash": "FEE33A702158CD451220BD4F23FC46AD7BC65C4D",
+          "quality": "1080p",
+          "type": "bluray",
+          "is_repack": "0",
+          "video_codec": "x264",
+          "bit_depth": "8",
+          "audio_channels": "5.1",
+          "seeds": 28,
+          "peers": 2,
+          "size": "1.79 GB",
+          "size_bytes": 1921997865,
+          "date_uploaded": "2022-01-19 00:57:56",
+          "date_uploaded_unix": 1642550276
+        }
+      ],
+      "date_uploaded": "2015-10-31 20:46:37",
+      "date_uploaded_unix": 1446320797
+    }
+  },
+  "@meta": {
+    "api_version": 2,
+    "execution_time": "0 ms"
+  }
+}
