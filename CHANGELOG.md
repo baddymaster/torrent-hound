@@ -7,6 +7,22 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **YTS primary endpoint switched to `https://movies-api.accel.li/api/v2/`**
+  per the operator's published migration notice (the old `yts.bz/api/v2/`
+  endpoint's `sunset: 2026-04-10` had already passed). The four
+  `yts.{lt,am,bz,gg}` mirrors remain on the list as fallbacks. Authenticity
+  of `movies-api.accel.li` was cross-verified against the YTS API
+  documentation page, the operator-signed migration notice embedded in
+  every mirror's JSON response, and identical IMDB code + torrent hash
+  parity for the same query.
+- **YTS magnets now carry all 10 trackers documented at
+  https://yts.bz/api** — five new trackers added (three HTTPS:
+  `tracker.moeblog.cn`, `tracker.zhuqiy.com`, `tracker.pmman.tech`; two
+  UDP: `open.dstud.io`, `tracker.srv00.com`). More trackers means better
+  swarm discovery for clients that honour them all.
+
 ## [3.0.2] - 2026-04-28
 
 ### Fixed
