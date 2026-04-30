@@ -120,3 +120,15 @@ def test_build_yts_magnet_format(th):
     assert magnet.startswith("magnet:?xt=urn:btih:ABC123")
     assert "dn=Test+Movie" in magnet
     assert "tr=udp://" in magnet
+
+
+def test_build_yts_magnet_includes_all_documented_trackers(th):
+    """The magnet must carry every tracker listed in YTS_TRACKERS — i.e.
+    the full set documented at https://yts.bz/api. Diffs between the
+    upstream docs and our list (added or removed trackers) will surface here."""
+    magnet = th._build_yts_magnet("ABC123", "Test Movie")
+    for tracker in th.YTS_TRACKERS:
+        assert f"tr={tracker}" in magnet, f"missing tracker: {tracker}"
+    # Spot-check that HTTPS trackers are encoded as standard `tr=https://`
+    # (some clients are picky about the scheme; this is the conventional form).
+    assert "tr=https://" in magnet

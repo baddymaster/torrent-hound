@@ -58,12 +58,21 @@ def _extract_yts_quality(query):
     return ' '.join(kept), quality
 
 
+# Recommended trackers per the YTS API documentation page (https://yts.bz/api),
+# in the order listed there. More trackers in a magnet means better swarm
+# discovery for clients that honour them all (most do). Includes three HTTPS
+# trackers — `tr=https://...` is standard and accepted by mainline clients.
 YTS_TRACKERS = [
-    "udp://open.demonii.com:1337/announce",
     "udp://tracker.opentrackr.org:1337/announce",
     "udp://tracker.torrent.eu.org:451/announce",
     "udp://tracker.dler.org:6969/announce",
     "udp://open.stealth.si:80/announce",
+    "udp://open.demonii.com:1337/announce",
+    "https://tracker.moeblog.cn:443/announce",
+    "udp://open.dstud.io:6969/announce",
+    "udp://tracker.srv00.com:6969/announce",
+    "https://tracker.zhuqiy.com:443/announce",
+    "https://tracker.pmman.tech:443/announce",
 ]
 
 
