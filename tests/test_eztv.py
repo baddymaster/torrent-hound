@@ -345,6 +345,47 @@ def test_searchEZTV_emits_empty_when_api_returns_zero_torrents(th, eztv_no_hits_
     assert eztv_call_count[0] == 1, "should not have hit the EZTV API more than once"
 
 
+def test_parse_eztv_json_populates_metadata(th, eztv_severance_json):
+    """Eager EZTV metadata: name, season, episode, imdb_code, uploaded,
+    plus quality/codec/source_type from title regex."""
+    torrents = eztv_severance_json.get("torrents", [])
+    results = th._parse_eztv_json(torrents, limit=2)
+    assert len(results) >= 1
+    md = results[0]["metadata"]
+    assert md["name"]
+    assert md["imdb_code"].startswith("tt")
+    assert md["uploaded"]                    # DD-MM-YYYY
+    if md.get("season"):
+        assert isinstance(md["season"], int)
+
+
+def test_searchEZTV_propagates_imdb_enrichment(th, eztv_severance_json):
+    """When the IMDB suggestion item has `s` (cast) and `y` (year), each
+    EZTV result for that imdb_id carries them through metadata."""
+    def fake_get(url, **kwargs):
+        if "imdb.com" in url:
+            resp = MagicMock()
+            resp.json.return_value = {"d": [{
+                "id": "tt11280740", "qid": "tvSeries", "l": "Severance",
+                "s": "Adam Scott, Britt Lower", "y": 2022,
+            }]}
+            return resp
+        # Build a "complete on page 1" variant so pagination terminates.
+        resp = MagicMock()
+        resp.json.return_value = {
+            **eztv_severance_json,
+            "torrents_count": len(eztv_severance_json.get("torrents", [])),
+        }
+        return resp
+
+    with patch.object(th.requests, "get", side_effect=fake_get):
+        results = th.searchEZTV("anything", quiet_mode=True)
+    assert results
+    md = results[0]["metadata"]
+    assert md.get("cast") == "Adam Scott, Britt Lower"
+    assert md.get("released") == "2022"
+
+
 def test_searchEZTV_falls_through_to_next_imdb_candidate_when_first_is_empty(th, eztv_no_hits_json, eztv_severance_json):
     """When the first IMDB tvSeries match has zero torrents on EZTV, `searchEZTV`
     must walk to the next candidate. Common with franchise queries where

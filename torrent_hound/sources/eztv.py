@@ -7,7 +7,7 @@ import requests
 from torrent_hound import state
 from torrent_hound.ui import colored
 
-from .base import _format_bytes
+from .base import _extract_release_tags, _fmt_date, _format_bytes
 
 EZTV_DOMAINS = ['eztvx.to', 'eztv.re', 'eztv.wf', 'eztv.it']
 
@@ -115,6 +115,27 @@ def _parse_eztv_json(torrents, domain='eztvx.to', season=None, episode=None, fil
         except (ZeroDivisionError, ValueError):
             ratio = 'inf'
         size_bytes = t.get('size_bytes', 0)
+        metadata: dict = {"name": title}
+        if t.get('imdb_id'):
+            metadata['imdb_code'] = f"tt{t['imdb_id']}"
+        season_val = t.get('season')
+        if season_val and str(season_val) != '0':
+            try:
+                metadata['season'] = int(season_val)
+            except (TypeError, ValueError):
+                pass
+        episode_val = t.get('episode')
+        if episode_val and str(episode_val) != '0':
+            try:
+                metadata['episode'] = int(episode_val)
+            except (TypeError, ValueError):
+                pass
+        uploaded = _fmt_date(t.get('date_released_unix'))
+        if uploaded:
+            metadata['uploaded'] = uploaded
+            metadata['released'] = uploaded   # episode air-date (overridden by IMDB year if available)
+        # Title regex for quality/codec/source/repack
+        metadata.update(_extract_release_tags(title))
         parsed.append({
             'name': title,
             'link': f"https://{domain}/ep/{t.get('id', '')}/{_eztv_slug(title)}/",
@@ -123,6 +144,7 @@ def _parse_eztv_json(torrents, domain='eztvx.to', season=None, episode=None, fil
             'size': _format_bytes(size_bytes),
             'ratio': ratio,
             'magnet': t.get('magnet_url', ''),
+            'metadata': metadata,
         })
         if len(parsed) >= limit:
             break
@@ -233,6 +255,20 @@ def searchEZTV(search_string='', quiet_mode=False, limit=10, timeout=8, progress
         return []
 
     parsed = _parse_eztv_json(all_torrents, domain=working_domain, season=season, episode=episode, filters=filters, limit=limit)
+
+    # Merge IMDB suggestion enrichment (cast + series start year) into each
+    # row's metadata. Each torrent has its own imdb_id; pick the matching
+    # enrichment, if any. IMDB-supplied year overrides per-episode air date
+    # for the `released` slot (the suggestion item answers "when did this
+    # show start"; the per-episode air date stays available via `uploaded`).
+    for row in parsed:
+        md = row.get("metadata") or {}
+        imdb_code = md.get("imdb_code", "")
+        imdb_id_num = imdb_code.removeprefix("tt") if imdb_code else ""
+        enrich = imdb_enrichment.get(imdb_id_num)
+        if enrich:
+            md.update(enrich)
+            row["metadata"] = md
 
     if not parsed and (season or episode or filters) and not quiet_mode:
         filter_desc = ''
