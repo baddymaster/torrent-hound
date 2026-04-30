@@ -48,15 +48,18 @@ def _parse_episode_query(query):
 
 
 def _imdb_lookup_candidates(query, timeout=8, limit=5):
-    """Return up to `limit` tvSeries IMDB IDs matching `query`, in IMDB
-    suggestion order (most relevant first). Returns an empty list on any
-    failure (network / non-JSON / no tvSeries match).
+    """Return up to `limit` (id, suggestion_item) pairs of tvSeries matches
+    for `query`, in IMDB suggestion order (most relevant first). The id is
+    the numeric form (without 'tt' prefix); the suggestion_item is the raw
+    dict so callers can pluck extra fields (`s` = top cast, `y` = year)
+    without re-fetching.
 
     Multi-candidate is critical for franchise queries where IMDB has
     several distinct `tvSeries` entries (e.g. multiple spin-offs or
-    sequels under one umbrella name). EZTV's API is keyed by IMDB ID,
-    so picking only the first suggestion misses everything tagged under
-    the others.
+    sequels under one umbrella name). EZTV's API is keyed by IMDB ID, so
+    picking only the first suggestion misses everything tagged under the
+    others. Returns an empty list on any failure (network / non-JSON /
+    no tvSeries match).
     """
     slug = query.strip().replace(' ', '_').lower()
     if not slug:
@@ -64,13 +67,13 @@ def _imdb_lookup_candidates(query, timeout=8, limit=5):
     url = f'https://v2.sg.media-imdb.com/suggestion/{slug[0]}/{slug}.json'
     try:
         r = requests.get(url, timeout=timeout)
-        ids = []
+        out = []
         for item in r.json().get('d', []):
             if item.get('qid') == 'tvSeries':
-                ids.append(item['id'].removeprefix('tt'))
-                if len(ids) >= limit:
+                out.append((item['id'].removeprefix('tt'), item))
+                if len(out) >= limit:
                     break
-        return ids
+        return out
     except (requests.RequestException, ValueError, KeyError):
         return []
 
@@ -78,10 +81,10 @@ def _imdb_lookup_candidates(query, timeout=8, limit=5):
 def _imdb_lookup(query, timeout=8):
     """Single-result wrapper around `_imdb_lookup_candidates`. Returns the
     most-relevant tvSeries IMDB ID (without 'tt' prefix) or None.
-    Preserved for back-compat — callers exercising multi-candidate behaviour
+    Preserved for back-compat — callers needing the suggestion item
     should use `_imdb_lookup_candidates` directly."""
     candidates = _imdb_lookup_candidates(query, timeout=timeout, limit=1)
-    return candidates[0] if candidates else None
+    return candidates[0][0] if candidates else None
 
 
 def _eztv_slug(title):
@@ -180,12 +183,24 @@ def searchEZTV(search_string='', quiet_mode=False, limit=10, timeout=8, progress
             progress({"type": "empty"})
         return []
 
+    # Build a lookup from imdb_id → enrichment dict (cast + year) sourced from
+    # the IMDB suggestion items we already have. Free metadata; merged into
+    # each result row's `metadata` dict after parsing.
+    imdb_enrichment: dict = {}
+    for imdb_id, item in candidates:
+        enrich: dict = {}
+        if item.get("s"):
+            enrich["cast"] = item["s"]
+        if item.get("y"):
+            enrich["released"] = str(item["y"])
+        imdb_enrichment[imdb_id] = enrich
+
     all_torrents = []
     working_domain = EZTV_DOMAINS[0]
     any_ok_or_empty = False  # at least one mirror responded for any candidate
     target = max(limit * 3, 30)  # soft cap with headroom for season/quality filters
 
-    for imdb_id in candidates:
+    for imdb_id, _item in candidates:
         for domain in EZTV_DOMAINS:
             if progress:
                 progress({"type": "mirror_attempt", "mirror": domain})

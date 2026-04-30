@@ -219,7 +219,9 @@ def test_imdb_lookup_returns_none_on_network_error(th):
 def test_imdb_lookup_candidates_returns_all_tv_series_in_suggestion_order(th):
     """IMDB suggestion API mixes movies, tvSeries, tvShorts, etc.; we must
     pick out every tvSeries entry while preserving the upstream's relevance
-    ranking — the first match isn't guaranteed to be the one EZTV hosts."""
+    ranking — the first match isn't guaranteed to be the one EZTV hosts.
+    Each result is now (id, suggestion_item) so callers can pluck `s` (cast)
+    and `y` (year) without re-fetching."""
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"d": [
         {"id": "tt000A", "qid": "movie",    "l": "A"},
@@ -230,7 +232,23 @@ def test_imdb_lookup_candidates_returns_all_tv_series_in_suggestion_order(th):
     ]}
     with patch.object(th.requests, "get", return_value=mock_resp):
         result = th._imdb_lookup_candidates("franchise query")
-    assert result == ["000B", "000D", "000E"]
+    assert [pair[0] for pair in result] == ["000B", "000D", "000E"]
+
+
+def test_imdb_lookup_candidates_returns_id_and_suggestion_item(th):
+    """The candidate list carries (id, suggestion_dict) tuples so the
+    EZTV parser can pluck `s` (cast) and `y` (year) for free."""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"d": [
+        {"id": "tt000A", "qid": "tvSeries", "l": "A", "s": "Alice, Bob", "y": 2020},
+        {"id": "tt000B", "qid": "tvSeries", "l": "B", "s": "Carol", "y": 2021},
+    ]}
+    with patch.object(th.requests, "get", return_value=mock_resp):
+        result = th._imdb_lookup_candidates("anything")
+    assert result == [
+        ("000A", {"id": "tt000A", "qid": "tvSeries", "l": "A", "s": "Alice, Bob", "y": 2020}),
+        ("000B", {"id": "tt000B", "qid": "tvSeries", "l": "B", "s": "Carol", "y": 2021}),
+    ]
 
 
 def test_imdb_lookup_candidates_respects_limit(th):
