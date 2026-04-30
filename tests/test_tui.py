@@ -29,10 +29,12 @@ from torrent_hound.tui import (
     SEARCH,
     _AppState,
     _kick_off_rd,
+    _name_column_budget,
     _rd_worker,
     _RDFlow,
     handle_key,
     read_key,
+    render_table,
 )
 
 # ── read_key infrastructure ────────────────────────────────────────────
@@ -736,6 +738,56 @@ def test_rd_worker_invalid_magnet_short_circuits(reset_state):
     m_add.assert_not_called()
     assert state.rd_flow is None
     assert "info-hash" in state.toast.lower()
+
+
+# ── render_table — long name handling ─────────────────────────────────
+
+def test_name_column_budget_scales_with_console_width():
+    """The Name column's char budget shrinks/grows with the actual terminal
+    width — important so the table never overflows the body Layout slot
+    when a result has a long filename."""
+    with patch("torrent_hound.tui._console") as fake_console:
+        fake_console.size.width = 120
+        budget_120 = _name_column_budget()
+        fake_console.size.width = 80
+        budget_80 = _name_column_budget()
+    # Both should be positive and reflect the width difference
+    assert budget_80 < budget_120
+    assert budget_80 == budget_120 - 40
+
+
+def test_name_column_budget_clamps_to_minimum_for_narrow_terminals():
+    """Very narrow terminals must still get a non-zero budget — the row
+    is unreadable below a certain width but rendering must not crash."""
+    with patch("torrent_hound.tui._console") as fake_console:
+        fake_console.size.width = 30   # absurdly narrow
+        assert _name_column_budget() == 20  # clamped to minimum
+
+
+def test_render_table_truncates_overlong_name_with_ellipsis(reset_state):
+    """A torrent name longer than the dynamic budget must be truncated
+    in-place with an ellipsis, never passed full-length to rich. This is
+    the deterministic guard against the long-name layout-corruption bug."""
+    state_module.results = [{
+        "name": "A" * 200,  # absurdly long, exceeds any sane terminal
+        "magnet": "magnet:?xt=urn:btih:" + "0" * 40,
+        "link": "https://example.test/x",
+        "source": "TPB",
+        "size": "1 GB",
+        "seeders": 1,
+        "leechers": 1,
+        "ratio": "1.0",
+    }]
+    state = _AppState(mode=RESULTS, selected_idx=0)
+    with patch("torrent_hound.tui._console") as fake_console:
+        fake_console.size.width = 100
+        fake_console.size.height = 30
+        table = render_table(state)
+        budget = _name_column_budget()
+    # The row's Name cell content must be ≤ budget; the cell ends in "…".
+    rendered_name = table.columns[1]._cells[0]
+    assert len(rendered_name) <= budget
+    assert rendered_name.endswith("…")
 
 
 def test_kick_off_rd_no_token_toasts_and_returns_none(reset_state):

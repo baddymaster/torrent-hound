@@ -779,6 +779,27 @@ def _scroll_into_view(state: _AppState) -> None:
         state.view_top = 0
 
 
+def _name_column_budget() -> int:
+    """How many display chars the Name column can safely use.
+
+    Long torrent names previously broke the table layout: with `no_wrap=True`
+    and `expand=True`, rich's measure pass would stretch the Name column past
+    the body slot's width on long content, corrupting render until the user
+    resized the terminal. Fixed by capping the Name string in Python before
+    handing it to rich — terminal-width-aware truncation, deterministic
+    layout, no dependence on rich's overflow heuristics.
+
+    Budget = terminal_width
+             − fixed columns (No 4 + Size 10 + S 6 + L 5 + S/L 5 = 30)
+             − per-cell horizontal padding (2 × 6 columns = 12)
+             − outer border (2)
+             − safety slack (2)  — rich occasionally renders narrower than nominal
+    """
+    fixed = 4 + 10 + 6 + 5 + 5
+    overhead = 12 + 2 + 2
+    return max(20, _console.size.width - fixed - overhead)
+
+
 def render_table(state: _AppState) -> Table:
     rows = _visible_results(state)
     visible = _visible_row_estimate()
@@ -797,7 +818,8 @@ def render_table(state: _AppState) -> Table:
     table.add_column("No", justify="left", width=4)
     # Source column intentionally absent — the selected row's source is shown
     # in the header (Option D). Per-row attribution lives in the header line.
-    table.add_column("Name", justify="left", no_wrap=True)
+    name_max = _name_column_budget()
+    table.add_column("Name", justify="left", no_wrap=True, max_width=name_max)
     table.add_column("Size", justify="right", width=10)
     table.add_column("S", justify="right", width=6)
     table.add_column("L", justify="right", width=5)
@@ -805,9 +827,12 @@ def render_table(state: _AppState) -> Table:
     for i, r in enumerate(windowed):
         absolute_idx = start + i
         style = PALETTE["accent"] if absolute_idx == state.selected_idx else ""
+        name = re.sub(r'[^\x20-\x7E]', '', r.get("name", ""))
+        if len(name) > name_max:
+            name = name[: name_max - 1] + "…"
         table.add_row(
             str(absolute_idx + 1),
-            re.sub(r'[^\x20-\x7E]', '', r.get("name", ""))[:80],
+            name,
             r.get("size", ""),
             str(r.get("seeders", "")),
             str(r.get("leechers", "")),
