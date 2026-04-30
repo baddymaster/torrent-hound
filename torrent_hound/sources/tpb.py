@@ -407,6 +407,13 @@ def _extract_summary(desc: str) -> str | None:
         first_line = text.split("\n", 1)[0].strip()
         if _HEADER_FIRST_LINE_RE.fullmatch(first_line):
             continue
+        # Skip listy paragraphs — tracklists / episode listings often
+        # land as a single paragraph (no blank lines between rows). If
+        # ≥ 3 lines start with a digit + separator, it's a list, not a plot.
+        lines = text.split("\n")
+        listy = sum(1 for ln in lines if re.match(r'^\s*\d+[\s\t.)]', ln))
+        if listy >= 3:
+            continue
         candidates.append(text)
     if not candidates:
         return None
