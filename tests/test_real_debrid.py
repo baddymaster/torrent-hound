@@ -607,6 +607,77 @@ def test_apply_action_filters_mixed_bad_and_good(th, capsys):
     assert "unexpected scheme 'file'" in out
 
 
+# --- Silent dispatch (TUI variant) ---------------------------------------
+
+def test_dispatch_clipboard_single_returns_message(th):
+    with patch.object(th.pyperclip, "copy") as m_copy:
+        result = th._rd_dispatch(["https://d.rd/x"], "clipboard")
+    m_copy.assert_called_once_with("https://d.rd/x")
+    assert "Real-Debrid" in result and "1 link" in result
+
+
+def test_dispatch_clipboard_multiple_returns_message(th):
+    with patch.object(th.pyperclip, "copy") as m_copy:
+        result = th._rd_dispatch(["https://a", "https://b", "https://c"], "clipboard")
+    m_copy.assert_called_once_with("https://a\nhttps://b\nhttps://c")
+    assert "3 links" in result
+
+
+def test_dispatch_print_writes_to_clipboard_in_tui_context(th):
+    """`print` action in the TUI has no terminal to print to; mirror to clipboard
+    so the user can still get the links out, and signal the substitution in the
+    return message."""
+    with patch.object(th.pyperclip, "copy") as m_copy:
+        result = th._rd_dispatch(["https://a", "https://b"], "print")
+    m_copy.assert_called_once_with("https://a\nhttps://b")
+    assert "clipboard" in result and "print action" in result
+
+
+def test_dispatch_browser_opens_each(th):
+    with patch.object(th.webbrowser, "open") as m_open, patch.object(th.time, "sleep"):
+        result = th._rd_dispatch(["https://u1", "https://u2"], "browser")
+    assert m_open.call_args_list == [(("https://u1",),), (("https://u2",),)]
+    assert "browser" in result and "2 link" in result
+
+
+def test_dispatch_downie_url_encodes(th):
+    with patch.object(th.webbrowser, "open") as m_open, patch.object(th.time, "sleep"):
+        th._rd_dispatch(["https://d.rd/file with spaces.mkv"], "downie")
+    called_url = m_open.call_args.args[0]
+    assert called_url.startswith("downie://XUL/?url=")
+    assert "file%20with%20spaces.mkv" in called_url
+
+
+@pytest.mark.parametrize("bad_scheme", [
+    "file:///etc/passwd",
+    "javascript:alert(1)",
+    "tel:+15551234567",
+    "http://insecure.example/file",
+])
+def test_dispatch_raises_when_no_usable_links(th, bad_scheme):
+    """All-filtered case must raise (caller surfaces the message as a toast),
+    not silently succeed with zero links."""
+    with patch.object(th.pyperclip, "copy") as m_copy, \
+         patch.object(th.webbrowser, "open") as m_open:
+        with pytest.raises(th._RdError, match="No usable"):
+            th._rd_dispatch([bad_scheme], "clipboard")
+    m_copy.assert_not_called()
+    m_open.assert_not_called()
+
+
+def test_dispatch_mentions_skipped_count_when_some_filtered(th):
+    """Mixed good + bad → succeed with the good ones, but flag the skipped
+    count in the message so the user knows the count doesn't match what RD
+    initially returned."""
+    with patch.object(th.pyperclip, "copy"):
+        result = th._rd_dispatch(
+            ["https://good", "file:///etc/passwd", "https://better"],
+            "clipboard",
+        )
+    assert "skipped" in result
+    assert "bad URL scheme" in result
+
+
 # --- _cmd_rd orchestrator ------------------------------------------------
 
 def _entry(magnet="magnet:?xt=urn:btih:" + "01" * 20, link="https://tpb/x"):

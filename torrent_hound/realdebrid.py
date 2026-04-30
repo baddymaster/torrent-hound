@@ -339,6 +339,44 @@ def _rd_prompt_file_selection(files, torrent_name):
         return ",".join(ids)
 
 
+def _rd_dispatch(links, action):
+    """Silent variant of `_rd_apply_action` for the TUI's RD worker.
+
+    Same URL-scheme allowlist (defence against hostile / MITM'd RD responses
+    sneaking `file://`, `javascript:`, etc. links through), same per-action
+    behaviour (clipboard / print / browser / Downie), but never prints — the
+    TUI surfaces success and warnings via toasts instead. Returns a single
+    user-facing summary string. Raises `_RdError` if no usable links remain
+    after filtering.
+    """
+    safe = [l for l in links if urllib.parse.urlparse(l).scheme == "https"]
+    skipped = len(links) - len(safe)
+    if not safe:
+        raise _RdError("No usable Real-Debrid direct links (all had unexpected URL schemes).")
+
+    n = len(safe)
+    suffix = f" ({skipped} skipped — bad URL scheme)" if skipped else ""
+
+    if action == "clipboard":
+        pyperclip.copy(safe[0] if n == 1 else "\n".join(safe))
+        msg = "1 link copied to clipboard" if n == 1 else f"{n} links copied to clipboard"
+        return f"Real-Debrid: {msg}{suffix}"
+    if action == "print":
+        # In TUI we can't really "print" — mirror to clipboard so the user
+        # gets the same effect (links available outside the TUI). The toast
+        # tells them where to find them.
+        pyperclip.copy("\n".join(safe))
+        return f"Real-Debrid: {n} link(s) copied to clipboard (print action){suffix}"
+    for i, link in enumerate(safe):
+        if action == "browser":
+            webbrowser.open(link)
+        elif action == "downie":
+            webbrowser.open("downie://XUL/?url=" + urllib.parse.quote(link, safe=""))
+        if i < n - 1:
+            time.sleep(0.2)
+    return f"Real-Debrid: {n} link(s) sent via {action}{suffix}"
+
+
 def _rd_apply_action(links, action):
     # Defense against a hostile or MITM'd RD response: only accept https:// direct
     # links. A file://, javascript:, tel:, or custom-scheme URL would otherwise

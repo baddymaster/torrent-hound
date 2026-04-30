@@ -90,6 +90,7 @@ from .realdebrid import (  # noqa: F401
     _rd_add_magnet,
     _rd_apply_action,
     _rd_check_cached,
+    _rd_dispatch,
     _rd_get_info,
     _rd_has_cdn_markers,
     _rd_parse_error_body,
