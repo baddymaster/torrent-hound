@@ -210,13 +210,26 @@ action = "downie"
 
 ### Usage
 
-After a search, navigate to a row, press `rd`. The flow submits the torrent
-to RD, waits for hoster links, and runs your configured action. Multi-file
-torrents drop into an interactive picker on first invocation.
+After a search, navigate to a row, press `rd`. The TUI shows a spinner while
+the worker submits to RD, waits for hoster links, and runs your configured
+action. Multi-file torrents (season packs, multi-part archives) trigger an
+in-app picker overlay:
 
-If RD is still processing (common for larger uncached torrents), you'll see
-a "run again in a moment" message — re-running `rd` picks up where it left
-off without re-prompting the picker.
+| Key       | Action                              |
+|-----------|-------------------------------------|
+| `↑` / `↓` | Move cursor through file list       |
+| `space`   | Toggle current row's checkbox       |
+| `a`       | Toggle all (mark all / clear all)   |
+| `⏎`       | Confirm selection                   |
+| `Esc`     | Cancel the RD operation             |
+
+All files start marked, so confirming with `⏎` immediately is equivalent to
+"all" in the legacy text picker. Outcome (success or error) lands as a toast
+on the results screen — no terminal hand-off, no "press enter to return".
+
+If RD is still processing (common for larger uncached torrents), the toast
+asks you to run `rd` again — re-running picks up where it left off without
+re-prompting the picker, since RD remembers the prior file selection.
 
 ### Troubleshooting
 

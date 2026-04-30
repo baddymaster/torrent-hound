@@ -9,6 +9,16 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Native Real-Debrid picker.** Pressing `rd` no longer suspends the
+  Live render to drop into a text-based prompt. The whole flow (submit →
+  poll → unrestrict → dispatch) now runs in a worker thread; multi-file
+  torrents bring up an in-app picker overlay with arrow navigation,
+  `space` to toggle a file, `a` to toggle all, `⏎` to confirm, `Esc` to
+  cancel. Outcome surfaces as a toast — no more terminal switch, no
+  "press enter to return". Single-file torrents skip the picker (auto
+  "all"), preserving the old shortcut behaviour. The legacy `_cmd_rd`
+  function and its tests remain in place for now as a reference and
+  defensive-behaviour anchor; nothing in the TUI calls it any more.
 - **YTS primary endpoint switched to `https://movies-api.accel.li/api/v2/`**
   per the operator's published migration notice (the old `yts.bz/api/v2/`
   endpoint's `sunset: 2026-04-10` had already passed). The four
