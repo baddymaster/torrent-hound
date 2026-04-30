@@ -9,6 +9,16 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **EZTV walks every IMDB tvSeries candidate for a query** instead of
+  bailing on the first match. IMDB's suggestion endpoint returns multiple
+  series for franchise queries (e.g. "kung fu panda" → three different
+  tvSeries IDs); EZTV only hosts torrents under some of them. Picking
+  only the first match meant zero results for queries the user could
+  clearly see content for in EZTV's web UI. We now aggregate across
+  candidates in suggestion order, stopping early once we have enough
+  headroom for filtering. The IMDB API is still the source of truth —
+  no HTML scraping (EZTV's frontend sits behind a Cloudflare managed
+  challenge that scraping can't reliably bypass).
 - **Native Real-Debrid picker.** Pressing `rd` no longer suspends the
   Live render to drop into a text-based prompt. The whole flow (submit →
   poll → unrestrict → dispatch) now runs in a worker thread; multi-file
