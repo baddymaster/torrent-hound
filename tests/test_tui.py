@@ -790,6 +790,19 @@ def test_render_table_truncates_overlong_name_with_ellipsis(reset_state):
     assert rendered_name.endswith("…")
 
 
+def test_metadata_view_mode_constant_exists():
+    from torrent_hound.tui import METADATA_VIEW
+    assert METADATA_VIEW == "metadata_view"
+
+
+def test_app_state_has_metadata_view_fields():
+    state = _AppState()
+    assert state.metadata_view_entry is None
+    assert state.metadata_view_scroll_top == 0
+    assert state.metadata_view_loading is False
+    assert state.metadata_view_error is None
+
+
 def test_kick_off_rd_no_token_toasts_and_returns_none(reset_state):
     """No token configured → friendly toast, no thread started, mode unchanged."""
     state = _AppState(mode=RESULTS)

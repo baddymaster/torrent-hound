@@ -73,6 +73,7 @@ MAGNET_VIEW = "magnet_view"  # full magnet displayed in the body, any key return
 RD_PICKER = "rd_picker"
 RD_WAITING = "rd_waiting"
 HELP = "help"
+METADATA_VIEW = "metadata_view"  # normalised metadata overlay shown via `v`
 
 
 # N3 — palette. One place to tune the entire look. Inline color strings
@@ -235,6 +236,12 @@ class _AppState:
     # Set by `_kick_off_rd` and cleared by the worker on completion. While
     # non-None, the TUI is in RD_WAITING or RD_PICKER mode.
     rd_flow: _RDFlow | None = None
+    # METADATA_VIEW state. `metadata_view_entry` references a row in
+    # `_state.results`; the renderer reads `entry.get("metadata")` off it.
+    metadata_view_entry: dict | None = None
+    metadata_view_scroll_top: int = 0
+    metadata_view_loading: bool = False
+    metadata_view_error: str | None = None
     # Wall-clock when toast was set; loop expires after TOAST_TTL_SECONDS.
     toast_set_at: float = 0.0
     # SEARCH mode buffer (typed new-query string) and the refetch trigger.
