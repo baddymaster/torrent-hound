@@ -589,6 +589,22 @@ def _handle_help_key(state: _AppState, key: str) -> bool:
     return True
 
 
+def _handle_metadata_view_key(state: _AppState, key: str) -> bool:
+    """METADATA_VIEW mode: ↑↓ scroll the panel, esc / any other key
+    dismisses, q quits."""
+    if key == "q":
+        return False
+    if key == "UP":
+        state.metadata_view_scroll_top = max(0, state.metadata_view_scroll_top - 1)
+        return True
+    if key == "DOWN":
+        state.metadata_view_scroll_top += 1   # render layer clamps against content height
+        return True
+    state.mode = RESULTS
+    state.metadata_view_entry = None
+    return True
+
+
 def handle_key(state: _AppState, key: str) -> bool:
     """Mutates state in-place. Returns False to break the event loop."""
     if state.mode == FILTER:
@@ -599,6 +615,8 @@ def handle_key(state: _AppState, key: str) -> bool:
         return _handle_magnet_view_key(state, key)
     if state.mode == HELP:
         return _handle_help_key(state, key)
+    if state.mode == METADATA_VIEW:
+        return _handle_metadata_view_key(state, key)
     if state.mode == RD_PICKER:
         return _handle_rd_picker_key(state, key)
     if state.mode == RD_WAITING:

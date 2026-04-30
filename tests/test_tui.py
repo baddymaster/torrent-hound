@@ -23,6 +23,7 @@ from torrent_hound.tui import (
     HELP,
     LOADING,
     MAGNET_VIEW,
+    METADATA_VIEW,
     RD_PICKER,
     RD_WAITING,
     RESULTS,
@@ -872,6 +873,43 @@ def test_kick_off_metadata_fetch_sets_error_on_empty_response(reset_state):
     assert state.metadata_view_error is not None
     assert "_lazy_fetched" not in entry["metadata"]
     assert "_lazy_fetching" not in entry["metadata"]
+
+
+def test_metadata_view_q_quits(reset_state):
+    state = _AppState(mode=METADATA_VIEW)
+    assert handle_key(state, "q") is False
+
+
+def test_metadata_view_up_decrements_scroll(reset_state):
+    state = _AppState(mode=METADATA_VIEW, metadata_view_scroll_top=3)
+    handle_key(state, "UP")
+    assert state.metadata_view_scroll_top == 2
+
+
+def test_metadata_view_up_clamps_at_zero(reset_state):
+    state = _AppState(mode=METADATA_VIEW, metadata_view_scroll_top=0)
+    handle_key(state, "UP")
+    assert state.metadata_view_scroll_top == 0
+
+
+def test_metadata_view_down_increments_scroll(reset_state):
+    state = _AppState(mode=METADATA_VIEW, metadata_view_scroll_top=2)
+    handle_key(state, "DOWN")
+    assert state.metadata_view_scroll_top == 3
+
+
+def test_metadata_view_esc_returns_to_results(reset_state):
+    entry = {"source": "TPB"}
+    state = _AppState(mode=METADATA_VIEW, metadata_view_entry=entry)
+    handle_key(state, "ESC")
+    assert state.mode == RESULTS
+    assert state.metadata_view_entry is None
+
+
+def test_metadata_view_any_other_key_returns_to_results(reset_state):
+    state = _AppState(mode=METADATA_VIEW, metadata_view_entry={"source": "TPB"})
+    handle_key(state, "x")
+    assert state.mode == RESULTS
 
 
 def test_kick_off_rd_no_token_toasts_and_returns_none(reset_state):
