@@ -8,7 +8,19 @@ import requests
 from torrent_hound import state
 from torrent_hound.ui import colored
 
-YTS_DOMAINS = ['yts.lt', 'yts.am', 'yts.bz', 'yts.gg']
+# Per the YTS API documentation page (https://yts.bz/api), the canonical v2
+# base URL is `https://movies-api.accel.li/api/v2/`. The four yts.* mirrors
+# remain on the list as fallbacks: they share the same backend (all redirect
+# to or are served by yts.bz) and continued working at the time of writing,
+# but the operator's own docs explicitly direct callers to accel.li and the
+# old endpoint's published `sunset` (2026-04-10) has already passed.
+YTS_DOMAINS = ['movies-api.accel.li', 'yts.lt', 'yts.am', 'yts.bz', 'yts.gg']
+
+# Hosts that only serve the API — no movie pages. The API's response carries
+# a real `url` field pointing at e.g. `https://yts.bz/movies/...`; for these
+# hosts we leave the URL alone instead of rewriting it (rewriting to the API
+# host would produce a link that returns JSON, not a viewable page).
+_YTS_API_ONLY_HOSTS = {'movies-api.accel.li'}
 
 # YTS's `query_term` does substring matching against movie titles only — no
 # inline DSL. Tokens like "1080p" appended to a query won't match any title
@@ -74,10 +86,11 @@ def _parse_yts_json(data, domain='yts.mx', limit=10, quality_filter=None):
     movies = data.get("data", {}).get("movies") or []
     parsed = []
     for movie in movies:
-        # Rewrite the link to use the working domain instead of whatever the API returned
+        # Rewrite the link to use the responding mirror, except for API-only
+        # hosts (movies-api.accel.li) which don't serve movie pages — for those
+        # we trust the API's returned URL (already a real yts.bz/movies/... page).
         movie_url = movie.get("url", "")
-        if movie_url:
-            # Replace any YTS domain in the URL with the one that actually responded
+        if movie_url and domain not in _YTS_API_ONLY_HOSTS:
             movie_url = re.sub(r'https?://[^/]+', f'https://{domain}', movie_url)
         for torrent in movie.get("torrents", []):
             if quality_filter and torrent.get('quality') != quality_filter:

@@ -78,6 +78,30 @@ def test_extract_yts_quality_unknown_quality_left_in_query(th):
     assert th._extract_yts_quality("matrix 9999p") == ("matrix 9999p", None)
 
 
+def test_parse_yts_json_does_not_rewrite_url_when_served_by_api_host(th, yts_interstellar_json):
+    """When the request was served by movies-api.accel.li (the API-only host
+    per YTS's own docs), the URL must NOT be rewritten to that host — accel.li
+    doesn't serve movie pages, so rewriting would produce a link that returns
+    JSON instead of a viewable page. The API's returned `url` (e.g.
+    `https://yts.bz/movies/...`) is canonical and must pass through intact."""
+    results = th._parse_yts_json(yts_interstellar_json, domain="movies-api.accel.li", limit=5)
+    assert len(results) > 0
+    for r in results:
+        assert "movies-api.accel.li" not in r["link"], f"link wrongly rewritten to API host: {r['link']}"
+        # Still expect a real YTS page URL
+        assert r["link"].startswith("https://"), f"link not absolute: {r['link']}"
+
+
+def test_parse_yts_json_does_rewrite_url_when_served_by_mirror(th, yts_interstellar_json):
+    """Sanity check the existing behaviour for non-API hosts is preserved: URLs
+    get rewritten to the responding mirror so dead-mirror redirects don't
+    poison links."""
+    results = th._parse_yts_json(yts_interstellar_json, domain="yts.bz", limit=5)
+    assert len(results) > 0
+    for r in results:
+        assert "yts.bz" in r["link"], f"expected link rewritten to yts.bz: {r['link']}"
+
+
 def test_parse_yts_json_quality_filter_drops_other_variants(th, yts_interstellar_json):
     # Without filter: every quality variant for every movie.
     all_results = th._parse_yts_json(yts_interstellar_json, limit=50)
