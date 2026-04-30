@@ -115,6 +115,30 @@ def test_parse_yts_json_quality_filter_drops_other_variants(th, yts_interstellar
         assert r["name"].endswith("[1080p]"), f"unexpected quality in {r['name']}"
 
 
+def test_parse_yts_json_populates_metadata_movie_fields(th, yts_interstellar_json):
+    results = th._parse_yts_json(yts_interstellar_json, limit=1)
+    assert len(results) == 1
+    md = results[0]["metadata"]
+    assert md["released"] != ""              # year as string
+    assert md["imdb_code"].startswith("tt")
+    assert md["genre"]                       # comma-joined non-empty
+    assert md["runtime"].endswith("s")       # 'Xh Ym Zs' format
+    assert md["summary"]
+    assert md["uploader"] == "yify"
+    assert "_yts_movie_id" in md and isinstance(md["_yts_movie_id"], int)
+
+
+def test_parse_yts_json_populates_metadata_release_fields(th, yts_interstellar_json):
+    md = th._parse_yts_json(yts_interstellar_json, limit=1)[0]["metadata"]
+    assert md["quality"]
+    assert md["codec"]
+    assert md["audio"]
+    assert "source_type" in md
+    assert md["uploaded"]                    # DD-MM-YYYY
+    # repack must be bool, not None
+    assert isinstance(md["repack"], bool)
+
+
 def test_build_yts_magnet_format(th):
     magnet = th._build_yts_magnet("ABC123", "Test Movie (2024)")
     assert magnet.startswith("magnet:?xt=urn:btih:ABC123")

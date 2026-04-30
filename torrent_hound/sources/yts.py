@@ -8,6 +8,8 @@ import requests
 from torrent_hound import state
 from torrent_hound.ui import colored
 
+from .base import _fmt_date, _fmt_runtime
+
 # Per the YTS API documentation page (https://yts.bz/api), the canonical v2
 # base URL is `https://movies-api.accel.li/api/v2/`. The four yts.* mirrors
 # remain on the list as fallbacks: they share the same backend (all redirect
@@ -111,6 +113,28 @@ def _parse_yts_json(data, domain='yts.mx', limit=10, quality_filter=None):
                 ratio = format(float(seeds) / float(peers), '.1f')
             except ZeroDivisionError:
                 ratio = 'inf'
+            metadata: dict = {
+                "name": name,
+                "released": str(movie.get("year", "")) or None,
+                "imdb_code": movie.get("imdb_code") or None,
+                "genre": ", ".join(movie.get("genres") or []) or None,
+                "runtime": _fmt_runtime((movie.get("runtime") or 0) * 60),
+                "summary": movie.get("summary") or None,
+                "quality": torrent.get("quality"),
+                "codec": torrent.get("video_codec"),
+                "audio": torrent.get("audio_channels"),
+                "source_type": torrent.get("type"),
+                "repack": bool(torrent.get("is_repack")),
+                "uploaded": _fmt_date(torrent.get("date_uploaded")),
+                "uploader": "yify",
+                "_yts_movie_id": movie.get("id"),
+            }
+            rating = movie.get("rating") or 0
+            if rating:
+                metadata["imdb_rating"] = float(rating)
+            # Drop None/empty values so the renderer's `.get()` returns the
+            # right thing (treats missing as dashed).
+            metadata = {k: v for k, v in metadata.items() if v is not None and v != ""}
             parsed.append({
                 "name": name,
                 "link": movie_url,
@@ -119,6 +143,7 @@ def _parse_yts_json(data, domain='yts.mx', limit=10, quality_filter=None):
                 "size": torrent.get("size", "?"),
                 "ratio": ratio,
                 "magnet": _build_yts_magnet(torrent["hash"], name),
+                "metadata": metadata,
             })
             if len(parsed) >= limit:
                 return parsed
