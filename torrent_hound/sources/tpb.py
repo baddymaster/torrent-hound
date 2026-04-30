@@ -288,17 +288,24 @@ def _extract_audio(desc: str) -> str | None:
     (AAC/DTS/E-AC-3/...) and channel layout (5.1/7.1/2.0/6 channels) when
     both are nearby; falls back to whichever is found alone. A bare integer
     channel count (`6`) gets `' channels'` appended so it doesn't read as
-    an isolated number."""
+    an isolated number.
+
+    If the codec name already encodes channel info (e.g. `DDP5.1`, `DD7.1`,
+    or even `DDP5` from a space-stripped `DDP5 1`), don't append a
+    separately-detected channel count — that would produce contradictory
+    output like `DDP5 6 channels`."""
     codec = None
     channels = None
     if (m := _AUDIO_CODEC_RE.search(desc)):
         codec = m.group(1)
     if (m := _AUDIO_CHANNELS_RE.search(desc)):
         channels = m.group(1)
-        # `6` → `6 channels`; `5.1` / `7.1` already self-describing.
         if "." not in channels:
             channels = f"{channels} channels"
     if codec and channels:
+        # Codec already carries digit info → channel count would duplicate.
+        if re.search(r'\d', codec):
+            return codec
         return f"{codec} {channels}"
     return codec or channels
 
