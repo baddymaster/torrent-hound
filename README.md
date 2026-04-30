@@ -124,6 +124,7 @@ mode-aware footer of keystroke hints at the bottom.
 | `c` / `⏎` | Copy magnet to clipboard                                            |
 | `cs`      | Copy magnet **and** open Seedr.cc                                   |
 | `m`       | Show the full magnet in an overlay panel (any key returns)          |
+| `v`       | Show normalised metadata for this torrent in an overlay panel       |
 | `o`       | Open the torrent page in your default browser                       |
 | `d`       | Hand the magnet to your default torrent client                      |
 | `rd`      | Real-Debrid: submit, fetch hoster links, dispatch via configured action |
