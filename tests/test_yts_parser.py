@@ -122,7 +122,9 @@ def test_parse_yts_json_populates_metadata_movie_fields(th, yts_interstellar_jso
     assert md["released"] != ""              # year as string
     assert md["imdb_code"].startswith("tt")
     assert md["genre"]                       # comma-joined non-empty
-    assert md["runtime"].endswith("s")       # 'Xh Ym Zs' format
+    # Runtime ends in one of h/m/s depending on the duration (zero units
+    # are now stripped, e.g. '2h 49m', '25m', '45s').
+    assert md["runtime"][-1] in ("h", "m", "s")
     assert md["summary"]
     assert md["uploader"] == "yify"
     assert "_yts_movie_id" in md and isinstance(md["_yts_movie_id"], int)

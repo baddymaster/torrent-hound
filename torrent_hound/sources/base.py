@@ -121,11 +121,31 @@ def _fmt_date(value) -> str | None:
 
 
 def _fmt_runtime(seconds) -> str | None:
-    """Format integer seconds as 'Xh Ym Zs'. Returns None for None or 0."""
+    """Format integer seconds as 'Xh Ym Zs', dropping leading zero hours
+    and trailing zero seconds. Middle-zero minutes (e.g. '1h 0m 22s')
+    are kept for unambiguous reading.
+
+    Examples:
+        8182 → '2h 16m 22s'        (1500 → '25m'    (45 → '45s'
+        7800 → '2h 10m'            (3622 → '1h 0m 22s'
+
+    Returns None for None or 0."""
     if not seconds:
         return None
     s = int(seconds)
-    return f"{s // 3600}h {(s % 3600) // 60}m {s % 60}s"
+    h = s // 3600
+    m = (s % 3600) // 60
+    sec = s % 60
+    parts: list[str] = []
+    if h:
+        parts.append(f"{h}h")
+    # Keep minutes if non-zero, or if both hours and seconds are present
+    # (clarity: '1h 0m 22s' beats '1h 22s' for 1 hour and 22 seconds).
+    if m or (h and sec):
+        parts.append(f"{m}m")
+    if sec:
+        parts.append(f"{sec}s")
+    return " ".join(parts) if parts else None
 
 
 _QUALITY_RE   = _re.compile(r'\b(480p|720p|1080p|2160p|4K)\b', _re.IGNORECASE)

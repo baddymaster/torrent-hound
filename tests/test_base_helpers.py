@@ -36,13 +36,28 @@ def test_fmt_runtime_full_hms(th):
     assert th._fmt_runtime(8182) == "2h 16m 22s"
 
 
-def test_fmt_runtime_minutes_only(th):
-    # 30 minutes
-    assert th._fmt_runtime(1800) == "0h 30m 0s"
+def test_fmt_runtime_drops_leading_zero_hours(th):
+    """A 25-minute short renders as '25m', not '0h 25m 0s'."""
+    assert th._fmt_runtime(1500) == "25m"
 
 
-def test_fmt_runtime_seconds_only(th):
-    assert th._fmt_runtime(45) == "0h 0m 45s"
+def test_fmt_runtime_drops_leading_zero_h_and_m(th):
+    """45-second clip renders as '45s', not '0h 0m 45s'."""
+    assert th._fmt_runtime(45) == "45s"
+
+
+def test_fmt_runtime_drops_trailing_zero_seconds(th):
+    """2h 10m exactly renders as '2h 10m', not '2h 10m 0s'."""
+    assert th._fmt_runtime(7800) == "2h 10m"
+
+
+def test_fmt_runtime_keeps_zero_minutes_when_h_and_s_both_set(th):
+    """1h 0m 22s — keep the middle 0m for clarity ('1h 22s' is ambiguous)."""
+    assert th._fmt_runtime(3622) == "1h 0m 22s"
+
+
+def test_fmt_runtime_exactly_one_hour(th):
+    assert th._fmt_runtime(3600) == "1h"
 
 
 def test_fmt_runtime_returns_none_on_zero_or_none(th):
