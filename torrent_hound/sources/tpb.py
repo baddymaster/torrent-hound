@@ -321,11 +321,15 @@ def _extract_subtitles(desc: str) -> str | None:
     """Subtitle language list from the detail-page description.
     Handles bracketed `[SUBTITLES]:` (R3/R10), aligned `Subtitle(s) :`
     (R7/R8), `Included subtitles =` (GalaxyRG), and the multi-line
-    `srt ....... <Language>` table format (R4)."""
+    `srt ....... <Language>` table format (R4).
+
+    Rejects URL values — some uploaders point to subtitle download
+    sites (e.g. `Subtitles : https://subscene.com/...`); that's not
+    a language list."""
     if (m := _SUBTITLES_RE.search(desc)):
         text = m.group(1).strip().rstrip(",")
         text = re.sub(r'\s*\(SRT File\)\s*$', '', text, flags=re.IGNORECASE).strip()
-        if text:
+        if text and not text.startswith(("http://", "https://", "www.")):
             return text
     # Multi-line `srt .... Language` rows (R4 / Subtitles section)
     langs = _SRT_LANGUAGE_RE.findall(desc)
@@ -337,25 +341,47 @@ def _extract_subtitles(desc: str) -> str | None:
 # Non-plot indicators — keywords whose presence in a paragraph rules it
 # out as a movie summary. Covers technical / encoding / playback notes
 # (R3's "Compliant with Xbox360/PS3..." paragraph) and torrent-site
-# promotional content (R10's "list of upcoming uploads, instant chat,
-# account registration..." paragraph).
+# promotional / group-credit content (R5's "Big Shout Out to all who
+# support our group, our fellow colleague Encoders / Remuxers..."
+# paragraph; R10's "list of upcoming uploads, instant chat, account
+# registration..." paragraph).
 _NON_PLOT_KEYWORDS_RE = re.compile(
     r'\b('
     r'kHz|kb/?s|Mb/?s|Kbps|Mbps|AAC|AC-?3|MP3|FLAC|x264|x265|HEVC|BluRay|HDR|'
-    r'Xbox|PS[345]|VLC|VBR|CBR|playback|audio stream|video format|encoder|'
+    r'Xbox|PS[345]|VLC|VBR|CBR|playback|audio stream|video format|'
+    r'encoders?|remuxers?|remux|mkv|m2ts|nfo|'
     r'yify|yify-torrents|torrents?|uploads?|seeders?|leechers?|'
-    r'registration|subtitle|screenshots?'
+    r'registration|subtitles?|screenshots?'
     r')\b',
     re.IGNORECASE,
 )
+# Labeled summary blocks — before the bare-paragraph fallback, look
+# for a 'Storyline'/'Synopsis'/'Plot'/'Description' header on its own
+# line followed by paragraph content. Reliable when present (R4 uses
+# 'Storyline'); falls through to bare-paragraph when missing (R1/R2/R10).
+_LABELED_PLOT_BLOCK_RE = re.compile(
+    r'^\s*(?:Storyline|Synopsis|Description|About\s+the\s+Movie)\s*$\n+'
+    r'\s*(.+?)(?=\n\s*\n|\Z)',
+    re.MULTILINE | re.DOTALL | re.IGNORECASE,
+)
+
+
+_HEADER_FIRST_LINE_RE = re.compile(r'^[A-Z][A-Z0-9 ]{3,29}\s*$')
 
 
 def _extract_summary(desc: str) -> str | None:
     """Try `Plot:` label first; otherwise pick the longest plain-prose
     paragraph in the description that doesn't trip the
     non-plot-keyword filter (technical specs, playback notes, torrent-site
-    promo text — none of which are movie plots)."""
+    promo text — none of which are movie plots).
+
+    Also skip paragraphs whose first line is an ALL-CAPS label like
+    `RELEASE NOTES`, `INFO`, `WARNING`, `DISCLAIMER` — those are
+    uploader announcements, not movie plots."""
     if (m := _PLOT_RE.search(desc)):
+        return m.group(1).strip()
+    # Labeled-block second: 'Storyline\n\n<text>' / 'Synopsis\n\n<text>'
+    if (m := _LABELED_PLOT_BLOCK_RE.search(desc)):
         return m.group(1).strip()
     candidates = []
     for para in re.split(r'\n\s*\n', desc):
@@ -368,6 +394,11 @@ def _extract_summary(desc: str) -> str | None:
         if ":" in head or "=" in head:
             continue
         if _NON_PLOT_KEYWORDS_RE.search(text):
+            continue
+        # Skip paragraphs that lead with an ALL-CAPS header line
+        # (e.g. "RELEASE NOTES\nDisc was fully supported by eac3to...").
+        first_line = text.split("\n", 1)[0].strip()
+        if _HEADER_FIRST_LINE_RE.fullmatch(first_line):
             continue
         candidates.append(text)
     if not candidates:
