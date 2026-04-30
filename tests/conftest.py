@@ -39,6 +39,20 @@ def tpb_no_hits_html():
 
 
 @pytest.fixture
+def tpb_detail_movie_html():
+    """Captured, sanitised TPB detail-page HTML for a movie torrent.
+    Used by lazy-fetch parser tests for the structured + description paths."""
+    return (FIXTURES / "tpb_detail_movie.html").read_bytes()
+
+
+@pytest.fixture
+def tpb_detail_iso_html():
+    """Captured TPB detail-page HTML for an ISO torrent — sparse description,
+    tests the data-poor case."""
+    return (FIXTURES / "tpb_detail_iso.html").read_bytes()
+
+
+@pytest.fixture
 def yts_interstellar_json():
     """Real captured YTS API response for 'interstellar'."""
     return json.loads((FIXTURES / "yts_search_interstellar.json").read_text())

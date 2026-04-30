@@ -130,6 +130,8 @@ from .sources.legacy_1337x import (  # noqa: F401
 )
 from .sources.tpb import (  # noqa: F401
     TPB_DOMAINS,
+    _fetch_tpb_metadata,
+    _parse_tpb_detail_html,
     _parse_tpb_html,
     _tpb_page_is_empty_results,
     searchPirateBayCondensed,

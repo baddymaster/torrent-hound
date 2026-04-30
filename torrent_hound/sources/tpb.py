@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from torrent_hound import state
 from torrent_hound.ui import colored
 
-from .base import _extract_release_tags, removeAndReplaceSpaces
+from .base import _extract_release_tags, _fmt_date, _fmt_runtime, removeAndReplaceSpaces
 
 _DEFAULT_QUERY = 'ubuntu'
 
@@ -131,3 +131,122 @@ def searchPirateBayCondensed(search_string=None, quiet_mode=False, limit=10, tim
     if progress:
         progress({"type": "failed"})
     return state.results_tpb_condensed
+
+
+# ── lazy detail-page fetch ──────────────────────────────────────────────
+
+# Map from `<dt>` label text on the detail page to our metadata field name.
+_DT_LABEL_TO_FIELD = {
+    'Type:': 'category',
+    'Files:': 'files',
+    'Uploaded:': 'uploaded',
+    'By:': 'uploader',
+}
+
+_IMDB_URL_RE = re.compile(r'imdb\.com/title/(tt\d+)')
+# TPB description lines often have a leading space (the .nfo block is
+# indented). Allow `^\s*` before each label.
+_GENRE_RE    = re.compile(r'^\s*Genre:\s*(.+)', re.MULTILINE)
+_DIRECTOR_RE = re.compile(r'^\s*Director:\s*(.+)', re.MULTILINE)
+_STARS_RE    = re.compile(r'^\s*Stars?:\s*(.+)', re.MULTILINE)
+_PLOT_RE     = re.compile(r'^\s*Plot:\s*(.+?)(?=\n\s*\n|\n\s*[A-Z]+:|\Z)', re.MULTILINE | re.DOTALL)
+_DURATION_RE = re.compile(r'Duration\s*=\s*(\d{1,2}):(\d{2}):(\d{2})')
+# Lines of the form `LABEL: value` for the misc bucket. Allow leading
+# whitespace; LABEL is uppercase letters/digits/underscore/dash/space (≥ 2 chars).
+_MISC_LINE_RE = re.compile(r'^\s*([A-Z][A-Z0-9 _-]{1,30}):\s*(.+)', re.MULTILINE)
+# Labels we capture as structured fields above — exclude from misc.
+_KNOWN_LABELS = frozenset({"GENRE", "DIRECTOR", "DIRECTORS", "STAR", "STARS",
+                            "PLOT", "RUNTIME", "DURATION", "IMDB"})
+
+
+def _parse_tpb_detail_html(html_bytes) -> dict:
+    """Parse a TPB torrent detail page. Returns a metadata-shaped dict
+    with the subset of keys the page actually carried; never raises.
+
+    Three sources of fields:
+      1. Structured `<dl class="col1">` / `<dl class="col2">` (Type, Files,
+         Uploaded, By) — present on every page.
+      2. Description block (`<div class="nfo">` or `<pre>`) — uploader
+         convention is `Genre:`, `Director:`, `Stars:`, `Plot:`, plus an
+         IMDB URL and a MEDIAINFO Duration line.
+      3. Anything else of the form `LABEL: value` in the description
+         lands in `misc` so unstructured uploader notes don't disappear.
+    """
+    if not html_bytes:
+        return {}
+    try:
+        soup = BeautifulSoup(html_bytes, 'html.parser')
+    except Exception:
+        return {}
+
+    md: dict = {}
+
+    # 1. Structured <dl> blocks
+    for dl in soup.select('dl.col1, dl.col2'):
+        dts = dl.find_all('dt')
+        dds = dl.find_all('dd')
+        for dt, dd in zip(dts, dds, strict=False):
+            label = dt.get_text(strip=True)
+            value = dd.get_text(strip=True)
+            field = _DT_LABEL_TO_FIELD.get(label)
+            if not field or not value:
+                continue
+            if field == 'files':
+                try:
+                    md['files'] = int(value)
+                except ValueError:
+                    pass
+            elif field == 'uploaded':
+                d = _fmt_date(value)
+                if d:
+                    md['uploaded'] = d
+            else:
+                md[field] = value
+
+    # 2. Description block — .nfo div or top-level <pre>
+    desc_node = soup.find('div', class_='nfo') or soup.find('pre')
+    desc = desc_node.get_text() if desc_node else ''
+
+    if (m := _IMDB_URL_RE.search(desc)):
+        md['imdb_code'] = m.group(1)
+    if (m := _GENRE_RE.search(desc)):
+        md['genre'] = m.group(1).strip()
+    if (m := _DIRECTOR_RE.search(desc)):
+        md['director'] = m.group(1).strip()
+    if (m := _STARS_RE.search(desc)):
+        # Cap at 5 names so the panel row stays short
+        names = [n.strip() for n in m.group(1).split(',')]
+        md['cast'] = ', '.join(names[:5])
+    if (m := _PLOT_RE.search(desc)):
+        md['summary'] = m.group(1).strip()
+    if (m := _DURATION_RE.search(desc)):
+        h, mn, s = (int(x) for x in m.groups())
+        runtime = _fmt_runtime(h * 3600 + mn * 60 + s)
+        if runtime:
+            md['runtime'] = runtime
+
+    # 3. Misc — every `LABEL: value` line that didn't match a known field.
+    misc: dict = {}
+    for m in _MISC_LINE_RE.finditer(desc):
+        label = m.group(1).strip()
+        if label.upper() in _KNOWN_LABELS:
+            continue
+        misc[label] = m.group(2).strip()
+    if misc:
+        md['misc'] = misc
+
+    return md
+
+
+def _fetch_tpb_metadata(detail_url, timeout=8):
+    """Lazy fetch + parse for a TPB detail page. Returns the metadata dict
+    on success, or `{}` on any HTTP / parse failure (caller surfaces the
+    error in the panel footer)."""
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
+    try:
+        r = requests.get(detail_url, headers=headers, timeout=timeout)
+    except requests.RequestException:
+        return {}
+    if r.status_code != 200:
+        return {}
+    return _parse_tpb_detail_html(r.content)
