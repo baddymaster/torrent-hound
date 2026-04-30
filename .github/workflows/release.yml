@@ -42,9 +42,37 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Need the repo checkout so the next step can read CHANGELOG.md.
+      - uses: actions/checkout@v6
+
       - uses: actions/download-artifact@v6
         with:
           merge-multiple: true
+
+      # Extract the just-tagged version's section from CHANGELOG.md into
+      # release_body.md. Works by streaming CHANGELOG and printing only the
+      # lines between `## [VERSION]` (exclusive) and the next `## [` header
+      # (exclusive). If the section is missing or empty, fall back to a
+      # `**Full Changelog**: ...compare/...` line so the release page isn't
+      # blank — same outcome the old `generate_release_notes` setting gave.
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          PREV_TAG="$(git tag -l --sort=-v:refname | grep -v "^${GITHUB_REF_NAME}\$" | head -1 || true)"
+          awk -v ver="$VERSION" '
+            /^## \[/ {
+              if ($0 ~ "^## \\[" ver "\\]") { in_section = 1; next }
+              else if (in_section) { exit }
+            }
+            in_section { print }
+          ' CHANGELOG.md > release_body.md
+          if [ ! -s release_body.md ] && [ -n "$PREV_TAG" ]; then
+            echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${GITHUB_REF_NAME}" > release_body.md
+          fi
+          echo "--- release_body.md preview ---"
+          head -40 release_body.md
+          echo "--- (end preview) ---"
 
       - uses: softprops/action-gh-release@v2
         with:
@@ -52,4 +80,4 @@ jobs:
             torrent-hound-linux
             torrent-hound-macos
             torrent-hound-windows.exe
-          generate_release_notes: true
+          body_path: release_body.md
