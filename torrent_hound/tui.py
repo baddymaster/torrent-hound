@@ -967,6 +967,7 @@ _METADATA_FIELD_ORDER = [
     ("quality",     "Quality"),
     ("codec",       "Codec"),
     ("audio",       "Audio"),
+    ("subtitles",   "Subtitles"),
     ("repack",      "Repack"),
     ("director",    "Director"),
     ("cast",        "Cast"),

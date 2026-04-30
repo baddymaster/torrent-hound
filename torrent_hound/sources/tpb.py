@@ -169,32 +169,68 @@ _SLASH_GENRE_RE = re.compile(
     re.MULTILINE,
 )
 # Multiple duration formats — try each in order:
-#   `Duration = HH:MM:SS` (existing GalaxyRG MEDIAINFO)
+#   `Duration = HH:MM:SS` (GalaxyRG MEDIAINFO)
 #   `Duration : 1 h 32 min` (R8 aligned-row format)
+#   `Duration.....: 1h 34mn` (R4 dot-padded label, `mn` minute alias)
+#   `Length..............: 1h30mn` (R7 — `Length` label alias, no internal space)
 #   `[RUNTIME]:.[ 1Hr 32Min` (R3 bracketed format)
 _DURATION_HMS_RE = re.compile(
-    r'(?:Duration|Runtime|RUNTIME\b[^\n]*)[\s=:]+\s*(\d{1,2}):(\d{2}):(\d{2})',
+    r'(?:Duration|Runtime|Length|RUNTIME\b[^\n]*)[\s=:.]+\s*(\d{1,2}):(\d{2}):(\d{2})',
     re.IGNORECASE,
 )
 _DURATION_HM_RE = re.compile(
-    r'(?:Duration|Runtime|\[\s*RUNTIME\s*\][^\n]*?)[\s=:]+\s*\[?\s*(\d+)\s*(?:h|hr|hour)s?\.?\s*(\d+)\s*(?:m|min|minute)s?\.?',
+    r'(?:Duration|Runtime|Length|\[\s*RUNTIME\s*\][^\n]*?)[\s=:.]+\s*\[?\s*'
+    r'(\d+)\s*(?:h|hr|hour)s?\.?\s*(\d+)\s*(?:m|mn|min|minute)s?\.?',
     re.IGNORECASE,
 )
 # Misc-line patterns (broader). Three shapes the parser recognises:
-#   `[LABEL]:....[ value`        — bracketed label + bracketed value (R3)
-#   `Label    : value`           — aligned `Label : value` with ≥ 1 space pad (R8)
-#   `LABEL: value`               — uppercase-only label (existing)
+#   `[LABEL]:....[ value`        — bracketed label + bracketed value (R3, R10)
+#   `Label.......: value`        — aligned `Label : value` with optional dot
+#                                   padding between label and colon (R4, R7, R8)
+#   `LABEL: value`               — uppercase-only label (GalaxyRG)
 _MISC_BRACKETED_RE = re.compile(
     r'^\s*\[([A-Z][A-Z0-9 _-]{1,30})\][:.\s]+\[\s*(.+?)\s*\]?\s*$',
     re.MULTILINE,
 )
 _MISC_ALIGNED_RE = re.compile(
-    r'^\s*\.?([A-Z][A-Za-z0-9 _()-]{1,40}?)\s+:\s+(.+?)\s*$',
+    r'^\s*\.?([A-Z][A-Za-z0-9 _()-]{1,40}?)[.\s]*:\s+(.+?)\s*$',
     re.MULTILINE,
 )
 _MISC_UPPER_RE = re.compile(
     r'^\s*([A-Z][A-Z0-9 _-]{1,30}):\s*(.+)',
     re.MULTILINE,
+)
+# Bracketed [GENRE] — extract structured genre when no `Genre:` line exists.
+_BRACKETED_GENRE_RE = re.compile(
+    r'^\s*\[\s*GENRE\s*\][:.\s]+\[\s*(.+?)\s*\]?\s*$',
+    re.MULTILINE,
+)
+# Video codec — pick the first recognised codec mention anywhere in
+# the description. AVC / HEVC are the underlying H.264 / H.265 specs;
+# x264 / x265 are encoder names. Both forms appear in the wild.
+_VIDEO_CODEC_RE = re.compile(
+    r'\b(x265|x264|h\.?265|h\.?264|HEVC|AVC|XviD|DivX|VP9|AV1)\b',
+    re.IGNORECASE,
+)
+# Audio channels — common surround configurations (5.1, 7.1, 2.0).
+# Anchored to a digit boundary so dates like 5.12.2024 don't match.
+_AUDIO_CHANNELS_RE = re.compile(
+    r'\b([1-9](?:\.[0-9])?)\s*(?:channels?|surround|stereo)\b',
+    re.IGNORECASE,
+)
+# Audio codec — first recognised audio format in the description.
+_AUDIO_CODEC_RE = re.compile(
+    r'\b(AAC|FLAC|MP3|Opus|TrueHD|Atmos|DTS(?:-HD)?|E-?AC-?3|AC-?3|DDP?\d?(?:\.\d)?)\b',
+    re.IGNORECASE,
+)
+# Subtitles — bracketed `[SUBTITLES]:` (R3, R10), aligned `Subtitle(s) : list`
+# (R7, R8), or single-line `Subtitles: list`.
+_SUBTITLES_RE = re.compile(
+    r'(?:^\s*\[\s*SUBTITLES?\s*\][:.\s]+\[\s*|'
+    r'^\s*Subtitles?\s*\(?s?\)?[.\s]*:\s+|'
+    r'^\s*Included subtitles\s*=\s*)'
+    r'(.+?)(?:\s*\(SRT File\))?\s*\]?\s*$',
+    re.MULTILINE | re.IGNORECASE,
 )
 # Labels we already capture as structured fields — exclude from misc.
 _KNOWN_LABELS = frozenset({
@@ -226,44 +262,87 @@ def _extract_cast(desc: str) -> str | None:
 
 
 def _extract_genre(desc: str) -> str | None:
-    """Try `Genre:` single-line first, fall back to a bare slash-separated line."""
+    """Try `Genre:` single-line first, then a bare slash-separated line,
+    then bracketed `[GENRE]:....[ value` (R10/YIFY format)."""
     if (m := _GENRE_RE.search(desc)):
         return m.group(1).strip()
     if (m := _SLASH_GENRE_RE.search(desc)):
         return m.group(1).strip()
+    if (m := _BRACKETED_GENRE_RE.search(desc)):
+        return m.group(1).strip()
     return None
 
 
-_STRUCTURED_BOUNDARY_RE = re.compile(
-    r'^\s*\[?([A-Z][A-Z0-9 _-]+)\]?\s*[:.]'   # R3 bracketed / GalaxyRG uppercase
-    r'|^\s*Directors?\s*$'                      # R1 multi-line block marker
-    r'|^\s*Stars?\s*$',
-    re.MULTILINE,
+def _extract_video_codec(desc: str) -> str | None:
+    """First recognised video codec mention in the description (used by
+    the lazy-fetch path; eager extraction from the torrent name lives in
+    `_extract_release_tags`)."""
+    if (m := _VIDEO_CODEC_RE.search(desc)):
+        return m.group(1).lower().replace(".", "")
+    return None
+
+
+def _extract_audio(desc: str) -> str | None:
+    """Audio info from the detail-page description. Combines audio codec
+    (AAC/DTS/E-AC-3/...) and channel layout (5.1/7.1/2.0) when both are
+    nearby; falls back to whichever is found alone."""
+    codec = None
+    channels = None
+    if (m := _AUDIO_CODEC_RE.search(desc)):
+        codec = m.group(1)
+    if (m := _AUDIO_CHANNELS_RE.search(desc)):
+        channels = m.group(1)
+    if codec and channels:
+        return f"{codec} {channels}"
+    return codec or channels
+
+
+def _extract_subtitles(desc: str) -> str | None:
+    """Subtitle language list from the detail-page description.
+    Handles bracketed `[SUBTITLES]:` (R3/R10), aligned `Subtitle(s) :`
+    (R7/R8), and `Included subtitles =` (GalaxyRG-style) variants."""
+    if (m := _SUBTITLES_RE.search(desc)):
+        text = m.group(1).strip().rstrip(",")
+        # Drop common decorative suffixes
+        text = re.sub(r'\s*\(SRT File\)\s*$', '', text, flags=re.IGNORECASE).strip()
+        return text or None
+    return None
+
+
+# Non-plot indicators — keywords whose presence in a paragraph rules it
+# out as a movie summary. Covers technical / encoding / playback notes
+# (R3's "Compliant with Xbox360/PS3..." paragraph) and torrent-site
+# promotional content (R10's "list of upcoming uploads, instant chat,
+# account registration..." paragraph).
+_NON_PLOT_KEYWORDS_RE = re.compile(
+    r'\b('
+    r'kHz|kb/?s|Mb/?s|Kbps|Mbps|AAC|AC-?3|MP3|FLAC|x264|x265|HEVC|BluRay|HDR|'
+    r'Xbox|PS[345]|VLC|VBR|CBR|playback|audio stream|video format|encoder|'
+    r'yify|yify-torrents|torrents?|uploads?|seeders?|leechers?|'
+    r'registration|subtitle|screenshots?'
+    r')\b',
+    re.IGNORECASE,
 )
 
 
 def _extract_summary(desc: str) -> str | None:
-    """Try `Plot:` label first; otherwise fall back to the longest plain-prose
-    paragraph in the description that appears *before* any structured-field
-    block. Restricting to the prefix prevents uploader notes that happen
-    to look like prose (e.g. R3's `Compliant with Xbox360/...` paragraph
-    that appears after a long bracketed-fields block) from being mistaken
-    for a movie plot."""
+    """Try `Plot:` label first; otherwise pick the longest plain-prose
+    paragraph in the description that doesn't trip the
+    non-plot-keyword filter (technical specs, playback notes, torrent-site
+    promo text — none of which are movie plots)."""
     if (m := _PLOT_RE.search(desc)):
         return m.group(1).strip()
-    # Limit the search to the description prefix that precedes any
-    # obvious structured-field row — the plot, when bare, lives there.
-    boundary = _STRUCTURED_BOUNDARY_RE.search(desc)
-    prefix = desc[:boundary.start()] if boundary else desc
     candidates = []
-    for para in re.split(r'\n\s*\n', prefix):
+    for para in re.split(r'\n\s*\n', desc):
         text = para.strip()
         if len(text) < 80:
             continue
-        if text.startswith("[") or "~~~" in text:
+        if text.startswith("[") or "~~~" in text or "---" in text:
             continue
         head = text[:100]
         if ":" in head or "=" in head:
+            continue
+        if _NON_PLOT_KEYWORDS_RE.search(text):
             continue
         candidates.append(text)
     if not candidates:
@@ -363,6 +442,12 @@ def _parse_tpb_detail_html(html_bytes) -> dict:
         md['cast'] = val
     if (val := _extract_summary(desc)):
         md['summary'] = val
+    if (val := _extract_video_codec(desc)):
+        md['codec'] = val
+    if (val := _extract_audio(desc)):
+        md['audio'] = val
+    if (val := _extract_subtitles(desc)):
+        md['subtitles'] = val
     runtime = _extract_runtime(desc)
     if runtime:
         md['runtime'] = runtime

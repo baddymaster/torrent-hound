@@ -35,6 +35,7 @@ class Metadata(TypedDict, total=False):
     codec: str
     source_type: str
     audio: str
+    subtitles: str
     repack: bool
     # Provenance
     uploader: str

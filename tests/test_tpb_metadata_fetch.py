@@ -128,6 +128,45 @@ def test_parse_tpb_detail_R8_extracts_aligned_duration(th, tpb_detail_r8_html):
     assert "1h" in md["runtime"]
 
 
+def test_parse_tpb_detail_R3_extracts_codec_audio_subtitles(th, tpb_detail_r3_html):
+    """R3's bracketed format carries codec, audio, and subtitles —
+    must surface as structured fields, not just dumped into misc."""
+    md = th._parse_tpb_detail_html(tpb_detail_r3_html)
+    assert md.get("codec") in ("x264", "h264")
+    assert md.get("audio")
+    assert "AAC" in md["audio"]
+    assert md.get("subtitles") == "English"
+
+
+def test_parse_tpb_detail_R8_extracts_codec_audio_subtitles(th, tpb_detail_r8_html):
+    """R8's aligned format lists Codec/Audio/Subtitle(s) rows under
+    nested Video:/Audio: blocks — extract them structured."""
+    md = th._parse_tpb_detail_html(tpb_detail_r8_html)
+    assert md.get("codec")          # AVC or x264
+    assert md.get("audio")          # DDP7.1 or similar
+    assert md.get("subtitles")
+    # A long comma-joined list — first language must be English (R8's first)
+    assert "English" in md["subtitles"]
+
+
+def test_parse_tpb_detail_R10_bracketed_genre_extraction(th):
+    """The [GENRE] bracketed label was previously dropped (excluded from
+    misc as a 'known label' but never structured). Now extracted as
+    `genre` even when there's no top-level `Genre:` line."""
+    # Build a minimal description with only a [GENRE] line
+    html = b"""
+    <html><body>
+    <div class="nfo">
+    [FORMAT]:.[ MP4
+    [GENRE]:........[ Animation | Action | Adventure | Comedy
+    [SOURCE]:.[ 720p
+    </div>
+    </body></html>
+    """
+    md = th._parse_tpb_detail_html(html)
+    assert md.get("genre") == "Animation | Action | Adventure | Comedy"
+
+
 def test_parse_tpb_detail_R8_misc_captures_video_audio_subtitle_rows(th, tpb_detail_r8_html):
     """Aligned `Codec : AVC`, `Frame Rate : 23.976`, `Subtitle(s) : ...`
     rows should appear in `misc` so the user sees the encode details."""
