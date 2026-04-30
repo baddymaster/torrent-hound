@@ -135,6 +135,22 @@ _REPACK_RE    = _re.compile(r'\b(REPACK|PROPER)\b', _re.IGNORECASE)
 _SEASON_EP_RE = _re.compile(r'\bS(\d{1,2})(?:E(\d{1,2}))?\b', _re.IGNORECASE)
 
 
+def _normalise_codec(codec: str) -> str:
+    """Render a codec name in the casing it's conventionally written in:
+    x264/x265/h264/h265 lowercase (encoder convention), XviD/DivX in
+    their distinctive casings, everything else (AVC/HEVC/VP9/AV1)
+    uppercase. Strips dots so 'h.264' renders as 'h264'."""
+    s = codec.replace(".", "")
+    sl = s.lower()
+    if sl in ("x264", "x265", "h264", "h265"):
+        return sl
+    if sl == "xvid":
+        return "XviD"
+    if sl == "divx":
+        return "DivX"
+    return s.upper()
+
+
 def _extract_release_tags(name: str) -> dict:
     """Pull quality/codec/source_type/repack/season/episode from a torrent
     filename. Used by TPB-eager, EZTV-eager, and any future source. All
@@ -143,7 +159,7 @@ def _extract_release_tags(name: str) -> dict:
     if (m := _QUALITY_RE.search(name)):
         out["quality"] = m.group(1).lower()
     if (m := _CODEC_RE.search(name)):
-        out["codec"] = m.group(1).lower().replace(".", "")
+        out["codec"] = _normalise_codec(m.group(1))
     if (m := _SOURCE_RE.search(name)):
         out["source_type"] = m.group(1)
     if _REPACK_RE.search(name):

@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from torrent_hound import state
 from torrent_hound.ui import colored
 
-from .base import _extract_release_tags, _fmt_date, _fmt_runtime, removeAndReplaceSpaces
+from .base import _extract_release_tags, _fmt_date, _fmt_runtime, _normalise_codec, removeAndReplaceSpaces
 
 _DEFAULT_QUERY = 'ubuntu'
 
@@ -276,36 +276,61 @@ def _extract_genre(desc: str) -> str | None:
 def _extract_video_codec(desc: str) -> str | None:
     """First recognised video codec mention in the description (used by
     the lazy-fetch path; eager extraction from the torrent name lives in
-    `_extract_release_tags`)."""
+    `_extract_release_tags`). Conventionally cased — `x264` lowercase,
+    `AVC` / `HEVC` uppercase, etc."""
     if (m := _VIDEO_CODEC_RE.search(desc)):
-        return m.group(1).lower().replace(".", "")
+        return _normalise_codec(m.group(1))
     return None
 
 
 def _extract_audio(desc: str) -> str | None:
     """Audio info from the detail-page description. Combines audio codec
-    (AAC/DTS/E-AC-3/...) and channel layout (5.1/7.1/2.0) when both are
-    nearby; falls back to whichever is found alone."""
+    (AAC/DTS/E-AC-3/...) and channel layout (5.1/7.1/2.0/6 channels) when
+    both are nearby; falls back to whichever is found alone. A bare integer
+    channel count (`6`) gets `' channels'` appended so it doesn't read as
+    an isolated number."""
     codec = None
     channels = None
     if (m := _AUDIO_CODEC_RE.search(desc)):
         codec = m.group(1)
     if (m := _AUDIO_CHANNELS_RE.search(desc)):
         channels = m.group(1)
+        # `6` → `6 channels`; `5.1` / `7.1` already self-describing.
+        if "." not in channels:
+            channels = f"{channels} channels"
     if codec and channels:
         return f"{codec} {channels}"
     return codec or channels
 
 
+# Multi-line subtitle table (R4-style):
+#   Subtitles
+#
+#   Codec...................... Language
+#
+#   srt ....................... English
+#   srt ....................... Dutch
+#   ...
+_SRT_LANGUAGE_RE = re.compile(
+    r'^\s*srt[\s.]+([A-Z][a-z]+)\s*$',
+    re.MULTILINE,
+)
+
+
 def _extract_subtitles(desc: str) -> str | None:
     """Subtitle language list from the detail-page description.
     Handles bracketed `[SUBTITLES]:` (R3/R10), aligned `Subtitle(s) :`
-    (R7/R8), and `Included subtitles =` (GalaxyRG-style) variants."""
+    (R7/R8), `Included subtitles =` (GalaxyRG), and the multi-line
+    `srt ....... <Language>` table format (R4)."""
     if (m := _SUBTITLES_RE.search(desc)):
         text = m.group(1).strip().rstrip(",")
-        # Drop common decorative suffixes
         text = re.sub(r'\s*\(SRT File\)\s*$', '', text, flags=re.IGNORECASE).strip()
-        return text or None
+        if text:
+            return text
+    # Multi-line `srt .... Language` rows (R4 / Subtitles section)
+    langs = _SRT_LANGUAGE_RE.findall(desc)
+    if langs:
+        return ", ".join(langs)
     return None
 
 
