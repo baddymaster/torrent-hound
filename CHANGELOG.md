@@ -7,6 +7,36 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-05-01
+
+- Capping year regex at 2030 + halting director/stars block at next heading + DDP.X.Y full match + sentinel subtitle filter
+- Skipping listy paragraphs (tracklists / episode lists) as summary candidates
+- Suppressing redundant channel-count when audio codec already encodes channels (DDP5.1, DD7.1, etc.)
+- Hardening summary/subtitle extraction against URL values, ALL-CAPS headers, and release-group thank-you paragraphs
+- Trimming leading zero hours and trailing zero seconds from runtime display ('25m' instead of '0h 25m 0s')
+- Conventional codec casing + audio 'channels' suffix + multi-line srt subtitle table
+- Extracting video codec / audio / subtitles from TPB detail pages plus bracketed-genre and dot-padded label support
+- Handling four real TPB description formats (multi-line block, slash-genre, bracketed, aligned) for metadata extraction
+- Documenting v keystroke (metadata overlay) in CHANGELOG
+- Documenting v keystroke for metadata overlay in README
+- Extending verb-rotation trigger to cover metadata-fetch loading state
+- Adding render_metadata_panel - field grid + summary + misc + loading/error footer
+- Wiring v keystroke dispatch + footer/help hints for metadata overlay
+- Adding METADATA_VIEW key handler with arrow-scroll + esc-dismiss
+- Adding _kick_off_metadata_fetch worker for TPB/YTS lazy enrichment
+- Adding METADATA_VIEW mode + state fields for metadata-overlay flow
+- Adding YTS movie_details.json lazy fetcher for cast + richer summary
+- Adding TPB detail-page lazy fetcher with structured + description regex extraction
+- Populating TPB metadata eagerly via row-name regex (year + release tags)
+- Populating EZTV metadata at parse time + propagating IMDB suggestion cast/year
+- Returning IMDB suggestion items alongside tvSeries IDs from _imdb_lookup_candidates
+- Populating YTS metadata dict at parse time from list_movies fields
+- Adding Metadata TypedDict alongside Result for normalised per-row metadata
+- Adding _fmt_date / _fmt_runtime / _extract_release_tags shared helpers in sources/base
+- Capping the Name column at terminal-width-aware budget so long torrent names don't break table rendering
+- Anonymising specific copyrighted titles in CHANGELOG, comments, and tests
+- Driving GitHub Release notes from CHANGELOG.md instead of GitHub's auto-generation
+
 ### Added
 
 - **`v` keystroke — metadata overlay.** Shows a normalised, source-consistent
