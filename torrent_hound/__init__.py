@@ -108,7 +108,9 @@ from .sources.base import _format_bytes, removeAndReplaceSpaces  # noqa: F401
 from .sources.eztv import (  # noqa: F401
     EZTV_DOMAINS,
     _eztv_slug,
+    _fetch_eztv_torrents_for_id,
     _imdb_lookup,
+    _imdb_lookup_candidates,
     _parse_episode_query,
     _parse_eztv_json,
     searchEZTV,

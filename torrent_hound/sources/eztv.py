@@ -47,21 +47,41 @@ def _parse_episode_query(query):
     return clean_query, season, episode, filter_words
 
 
-def _imdb_lookup(query, timeout=8):
-    """Look up a TV series IMDB ID via IMDB's public suggestion endpoint.
-    Returns the numeric ID string (without 'tt' prefix) or None."""
+def _imdb_lookup_candidates(query, timeout=8, limit=5):
+    """Return up to `limit` tvSeries IMDB IDs matching `query`, in IMDB
+    suggestion order (most relevant first). Returns an empty list on any
+    failure (network / non-JSON / no tvSeries match).
+
+    Multi-candidate is critical for franchise queries like "kung fu panda"
+    where IMDB has three separate tvSeries entries (Legends of Awesomeness
+    2011, The Paws of Destiny 2018, The Dragon Knight 2022). EZTV's API is
+    keyed by IMDB ID, so picking only the first match misses everything
+    tagged under the other two.
+    """
     slug = query.strip().replace(' ', '_').lower()
     if not slug:
-        return None
+        return []
     url = f'https://v2.sg.media-imdb.com/suggestion/{slug[0]}/{slug}.json'
     try:
         r = requests.get(url, timeout=timeout)
+        ids = []
         for item in r.json().get('d', []):
             if item.get('qid') == 'tvSeries':
-                return item['id'].removeprefix('tt')
+                ids.append(item['id'].removeprefix('tt'))
+                if len(ids) >= limit:
+                    break
+        return ids
     except (requests.RequestException, ValueError, KeyError):
-        pass
-    return None
+        return []
+
+
+def _imdb_lookup(query, timeout=8):
+    """Single-result wrapper around `_imdb_lookup_candidates`. Returns the
+    most-relevant tvSeries IMDB ID (without 'tt' prefix) or None.
+    Preserved for back-compat — callers exercising multi-candidate behaviour
+    should use `_imdb_lookup_candidates` directly."""
+    candidates = _imdb_lookup_candidates(query, timeout=timeout, limit=1)
+    return candidates[0] if candidates else None
 
 
 def _eztv_slug(title):
@@ -106,57 +126,90 @@ def _parse_eztv_json(torrents, domain='eztvx.to', season=None, episode=None, fil
     return parsed
 
 
+def _fetch_eztv_torrents_for_id(imdb_id, domain, timeout):
+    """Fetch all torrents for one IMDB ID from one EZTV domain, paginating
+    up to 3 pages (~300 episodes). Returns `(torrents, status)` where status
+    is one of:
+
+      'ok'            — got ≥1 torrent
+      'empty'         — API explicitly returned `torrents_count: 0`; the
+                        IMDB ID matched nothing on EZTV's backend. Caller
+                        should not retry on other mirrors (same backend),
+                        but may try a different IMDB candidate.
+      'mirror_failed' — network/JSON error or unexpected shape; caller
+                        should try the next mirror for this IMDB ID.
+    """
+    all_torrents = []
+    try:
+        for page in range(1, 4):
+            url = f"https://{domain}/api/get-torrents?imdb_id={imdb_id}&limit=100&page={page}"
+            r = requests.get(url, timeout=timeout)
+            data = r.json()
+            # Explicit zero count from the API on the first page → definitive
+            # empty for this IMDB ID. Don't probe further mirrors; their
+            # backend is the same.
+            if page == 1 and data.get('torrents_count') == 0:
+                return [], 'empty'
+            page_torrents = data.get('torrents', [])
+            if not page_torrents:
+                break
+            all_torrents.extend(page_torrents)
+            if len(all_torrents) >= data.get('torrents_count', 0):
+                break
+    except (requests.RequestException, ValueError):
+        return [], 'mirror_failed'
+    if all_torrents:
+        return all_torrents, 'ok'
+    return [], 'mirror_failed'
+
+
 def searchEZTV(search_string='', quiet_mode=False, limit=10, timeout=8, progress=None):
-    """Search EZTV for TV shows via IMDB ID bridge + optional episode/quality filtering."""
+    """Search EZTV via the IMDB-ID bridge with optional episode/quality
+    filtering. When IMDB returns multiple tvSeries candidates for a query
+    (e.g. "kung fu panda" → three separate series), we walk the candidate
+    list in order, aggregating torrents from any that EZTV actually hosts.
+    Stops early once we have plenty of headroom for filtering."""
     clean_query, season, episode, filters = _parse_episode_query(search_string)
 
-    imdb_id = _imdb_lookup(clean_query, timeout=timeout)
-    if not imdb_id:
+    candidates = _imdb_lookup_candidates(clean_query, timeout=timeout)
+    if not candidates:
         if not quiet_mode:
             print(colored.magenta("[EZTV] No matching TV show found on IMDB"))
         if progress:
             progress({"type": "empty"})
         return []
 
-    # Fetch from EZTV, paginating if needed, with domain fallback
     all_torrents = []
     working_domain = EZTV_DOMAINS[0]
-    for domain in EZTV_DOMAINS:
-        if progress:
-            progress({"type": "mirror_attempt", "mirror": domain})
-        try:
-            for page in range(1, 4):  # up to 300 episodes
-                url = f"https://{domain}/api/get-torrents?imdb_id={imdb_id}&limit=100&page={page}"
-                r = requests.get(url, timeout=timeout)
-                data = r.json()
-                # API responded with an explicit zero count → genuine empty
-                # (IMDB matched something — usually a film — that EZTV simply
-                # doesn't host). Walking more mirrors can't conjure torrents;
-                # they all share the same backend keyed by IMDB ID.
-                if page == 1 and data.get('torrents_count') == 0:
-                    if progress:
-                        progress({"type": "empty"})
-                    return []
-                page_torrents = data.get('torrents', [])
-                if not page_torrents:
-                    break
-                all_torrents.extend(page_torrents)
-                if len(all_torrents) >= data.get('torrents_count', 0):
-                    break
-            if all_torrents:
+    any_ok_or_empty = False  # at least one mirror responded for any candidate
+    target = max(limit * 3, 30)  # soft cap with headroom for season/quality filters
+
+    for imdb_id in candidates:
+        for domain in EZTV_DOMAINS:
+            if progress:
+                progress({"type": "mirror_attempt", "mirror": domain})
+            torrents, status = _fetch_eztv_torrents_for_id(imdb_id, domain, timeout)
+            if status == 'ok':
+                all_torrents.extend(torrents)
                 working_domain = domain
                 state.eztv_url = f"https://{domain}/api/get-torrents?imdb_id={imdb_id}"
-                break
-            # Mirror responded but no torrents — treat as miss and try next.
+                any_ok_or_empty = True
+                break  # this candidate done; move to next candidate
+            if status == 'empty':
+                any_ok_or_empty = True
+                break  # API authoritative → don't probe more mirrors for this id
             if progress:
                 progress({"type": "mirror_failed", "mirror": domain})
-        except (requests.RequestException, ValueError):
-            all_torrents = []
-            if progress:
-                progress({"type": "mirror_failed", "mirror": domain})
-            continue
+        if len(all_torrents) >= target:
+            break
 
     if not all_torrents:
+        if any_ok_or_empty:
+            # Mirrors responded for at least one candidate but every candidate
+            # came back empty → genuine no-results, not a network failure.
+            if progress:
+                progress({"type": "empty"})
+            return []
         if not quiet_mode:
             print(colored.magenta("[EZTV] Error : All known mirrors unreachable or no results"))
         if progress:

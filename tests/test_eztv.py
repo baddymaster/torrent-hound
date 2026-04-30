@@ -213,6 +213,56 @@ def test_imdb_lookup_returns_none_on_network_error(th):
 
 
 # ---------------------------------------------------------------------------
+# _imdb_lookup_candidates (multi-result)
+# ---------------------------------------------------------------------------
+
+def test_imdb_lookup_candidates_returns_all_tv_series_in_suggestion_order(th):
+    """IMDB suggestion API mixes movies, tvSeries, tvShorts, etc.; we must
+    pick out every tvSeries entry while preserving the upstream's relevance
+    ranking — the first match isn't guaranteed to be the one EZTV hosts."""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"d": [
+        {"id": "tt0441773", "qid": "movie",    "l": "Kung Fu Panda"},
+        {"id": "tt1545214", "qid": "tvSeries", "l": "Kung Fu Panda: Legends of Awesomeness"},
+        {"id": "tt1702433", "qid": "tvShort",  "l": "Kung Fu Panda Holiday"},
+        {"id": "tt8271176", "qid": "tvSeries", "l": "Kung Fu Panda: The Paws of Destiny"},
+        {"id": "tt18783984", "qid": "tvSeries", "l": "Kung Fu Panda: The Dragon Knight"},
+    ]}
+    with patch.object(th.requests, "get", return_value=mock_resp):
+        result = th._imdb_lookup_candidates("kung fu panda")
+    assert result == ["1545214", "8271176", "18783984"]
+
+
+def test_imdb_lookup_candidates_respects_limit(th):
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"d": [
+        {"id": f"tt{n}", "qid": "tvSeries", "l": f"Show {n}"} for n in range(10)
+    ]}
+    with patch.object(th.requests, "get", return_value=mock_resp):
+        assert len(th._imdb_lookup_candidates("anything", limit=3)) == 3
+
+
+def test_imdb_lookup_candidates_returns_empty_when_no_tv_series(th):
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"d": [{"id": "tt1", "qid": "movie", "l": "Film"}]}
+    with patch.object(th.requests, "get", return_value=mock_resp):
+        assert th._imdb_lookup_candidates("anything") == []
+
+
+def test_imdb_lookup_candidates_returns_empty_on_network_error(th):
+    with patch.object(th.requests, "get", side_effect=requests.ConnectionError("nope")):
+        assert th._imdb_lookup_candidates("anything") == []
+
+
+def test_imdb_lookup_candidates_returns_empty_for_empty_query(th):
+    """Don't even hit IMDB for an empty/whitespace query."""
+    with patch.object(th.requests, "get") as m_get:
+        assert th._imdb_lookup_candidates("") == []
+        assert th._imdb_lookup_candidates("   ") == []
+    m_get.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # searchEZTV integration (mocked)
 # ---------------------------------------------------------------------------
 
@@ -275,6 +325,96 @@ def test_searchEZTV_emits_empty_when_api_returns_zero_torrents(th, eztv_no_hits_
     assert "failed" not in types, f"unexpected `failed` event: {types}"
     assert types.count("mirror_attempt") == 1, "should not have probed beyond the first mirror"
     assert eztv_call_count[0] == 1, "should not have hit the EZTV API more than once"
+
+
+def test_searchEZTV_falls_through_to_next_imdb_candidate_when_first_is_empty(th, eztv_no_hits_json, eztv_severance_json):
+    """When the first IMDB tvSeries match has zero torrents on EZTV, `searchEZTV`
+    must walk to the next candidate. Real-world: "kung fu panda" — first tvSeries
+    is "Legends of Awesomeness" (no EZTV torrents); second is "Paws of Destiny"
+    (41 torrents)."""
+    events = []
+    eztv_calls_per_id = {}
+    # Build a "complete on page 1" variant so pagination terminates immediately
+    # (the captured fixture has torrents_count=140 but only 100 in the array).
+    second_response = {
+        **eztv_severance_json,
+        "torrents_count": len(eztv_severance_json.get("torrents", [])),
+    }
+
+    def fake_get(url, **kwargs):
+        if "imdb.com" in url:
+            resp = MagicMock()
+            resp.json.return_value = {"d": [
+                {"id": "tt1111111", "qid": "tvSeries", "l": "First (no torrents)"},
+                {"id": "tt2222222", "qid": "tvSeries", "l": "Second (has torrents)"},
+            ]}
+            return resp
+        for imdb_id, count_key in (("imdb_id=1111111", "first"), ("imdb_id=2222222", "second")):
+            if imdb_id in url:
+                eztv_calls_per_id[count_key] = eztv_calls_per_id.get(count_key, 0) + 1
+                resp = MagicMock()
+                resp.json.return_value = eztv_no_hits_json if count_key == "first" else second_response
+                return resp
+        raise AssertionError(f"unexpected URL: {url}")
+
+    with patch.object(th.requests, "get", side_effect=fake_get):
+        results = th.searchEZTV("anything", quiet_mode=True, progress=events.append)
+
+    assert len(results) > 0, "should return results from second candidate"
+    assert eztv_calls_per_id == {"first": 1, "second": 1}, "should have hit each IMDB ID exactly once"
+    types = [e["type"] for e in events]
+    assert "ok" in types
+    assert "failed" not in types
+
+
+def test_searchEZTV_emits_empty_when_all_candidates_are_empty(th, eztv_no_hits_json):
+    """All IMDB candidates → `torrents_count: 0` → genuine empty across the
+    franchise. Final event must be `empty`, not `failed`."""
+    events = []
+
+    def fake_get(url, **kwargs):
+        if "imdb.com" in url:
+            resp = MagicMock()
+            resp.json.return_value = {"d": [
+                {"id": "tt1", "qid": "tvSeries", "l": "A"},
+                {"id": "tt2", "qid": "tvSeries", "l": "B"},
+                {"id": "tt3", "qid": "tvSeries", "l": "C"},
+            ]}
+            return resp
+        resp = MagicMock()
+        resp.json.return_value = eztv_no_hits_json
+        return resp
+
+    with patch.object(th.requests, "get", side_effect=fake_get):
+        results = th.searchEZTV("anything", quiet_mode=True, progress=events.append)
+
+    assert results == []
+    types = [e["type"] for e in events]
+    assert types[-1] == "empty"
+    assert "failed" not in types
+
+
+def test_searchEZTV_emits_failed_when_no_mirror_responds_for_any_candidate(th):
+    """All candidates × all mirrors fail with network errors → `failed`
+    (genuine connectivity issue, not an empty-results case)."""
+    events = []
+
+    def fake_get(url, **kwargs):
+        if "imdb.com" in url:
+            resp = MagicMock()
+            resp.json.return_value = {"d": [
+                {"id": "tt1", "qid": "tvSeries", "l": "A"},
+                {"id": "tt2", "qid": "tvSeries", "l": "B"},
+            ]}
+            return resp
+        raise requests.ConnectionError("all dead")
+
+    with patch.object(th.requests, "get", side_effect=fake_get):
+        results = th.searchEZTV("anything", quiet_mode=True, progress=events.append)
+
+    assert results == []
+    types = [e["type"] for e in events]
+    assert types[-1] == "failed"
 
 
 def test_searchEZTV_shows_error_when_all_domains_fail(th, capsys):
