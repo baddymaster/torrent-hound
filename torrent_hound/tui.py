@@ -1397,7 +1397,7 @@ def run_app() -> None:
             if state.refetch_request:
                 state.refetch_request = False
                 _kick_off_fetch(state)
-            if state.mode == LOADING:
+            if state.mode == LOADING or state.metadata_view_loading:
                 _rotate_verb(state)
             # Vim-style chord timeout: if the buffer's been sitting too long,
             # dispatch the prefix alone so `r`/`c` aren't permanently blocked.

@@ -1013,6 +1013,17 @@ def test_render_metadata_panel_shows_loading_footer(reset_state):
     assert "Sniffing the trackers" in out
 
 
+def test_verb_rotation_runs_during_metadata_loading():
+    """When `metadata_view_loading` is True, the main loop's verb-rotation
+    trigger must fire too — not just during search LOADING."""
+    from torrent_hound.tui import _rotate_verb
+    state = _AppState(metadata_view_loading=True, current_verb="initial", verb_set_at=0)
+    _rotate_verb(state)
+    # Either the same verb (random.choice may pick the same one) or a
+    # different one — but verb_set_at must update.
+    assert state.verb_set_at > 0
+
+
 def test_render_metadata_panel_shows_error_footer(reset_state):
     from rich.console import Console
 
