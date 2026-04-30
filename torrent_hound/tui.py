@@ -62,6 +62,8 @@ from torrent_hound.realdebrid import (
     _strip_ansi,
 )
 from torrent_hound.sources import searchAllSites
+from torrent_hound.sources.tpb import _fetch_tpb_metadata
+from torrent_hound.sources.yts import _fetch_yts_movie_details
 from torrent_hound.ui import console as _console
 
 # ── modes ──────────────────────────────────────────────────────────────
@@ -1159,6 +1161,51 @@ def _rd_worker(state: _AppState, entry: dict, token: str, action: str) -> None:
         _finish(str(e))
     except (KeyError, TypeError) as e:
         _finish(f"Unexpected Real-Debrid response shape ({type(e).__name__}). Try again.")
+
+
+def _kick_off_metadata_fetch(state: _AppState, entry: dict) -> threading.Thread | None:
+    """If `entry` needs lazy enrichment for the metadata overlay, start a
+    daemon worker thread and return it. Returns None when nothing to fetch
+    (already cached, fetch already in flight, or source has no lazy path).
+
+    The worker writes additional fields into `entry["metadata"]` in place
+    and toggles `state.metadata_view_loading` for the panel's spinner
+    footer. On a fetch failure it sets `state.metadata_view_error` so the
+    panel surfaces the reason; `_lazy_fetched` stays unset so the user
+    can retry by pressing `v` again."""
+    md = entry.setdefault("metadata", {})
+    if md.get("_lazy_fetched") or md.get("_lazy_fetching"):
+        return None
+    source = entry.get("source")
+    if source not in ("TPB", "YTS"):
+        return None
+
+    md["_lazy_fetching"] = True
+    state.metadata_view_loading = True
+    state.metadata_view_error = None
+
+    def _worker() -> None:
+        try:
+            if source == "TPB":
+                fetched = _fetch_tpb_metadata(entry["link"])
+            else:  # YTS
+                yts_id = md.get("_yts_movie_id")
+                fetched = _fetch_yts_movie_details(yts_id) if yts_id else {}
+            if not fetched:
+                state.metadata_view_error = (
+                    f"Couldn't fetch detail page from {source}. "
+                    f"Press v again to retry."
+                )
+            else:
+                md.update(fetched)
+                md["_lazy_fetched"] = True
+        finally:
+            md.pop("_lazy_fetching", None)
+            state.metadata_view_loading = False
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+    return thread
 
 
 def _kick_off_fetch(state: _AppState) -> threading.Thread:

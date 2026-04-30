@@ -803,6 +803,77 @@ def test_app_state_has_metadata_view_fields():
     assert state.metadata_view_error is None
 
 
+def test_kick_off_metadata_fetch_returns_none_for_eztv(reset_state):
+    """EZTV is fully eager — no lazy fetch should be kicked off."""
+    from torrent_hound.tui import _kick_off_metadata_fetch
+    entry = {"source": "EZTV", "link": "x", "metadata": {}}
+    state = _AppState()
+    assert _kick_off_metadata_fetch(state, entry) is None
+    assert state.metadata_view_loading is False
+
+
+def test_kick_off_metadata_fetch_returns_none_when_already_fetched(reset_state):
+    from torrent_hound.tui import _kick_off_metadata_fetch
+    entry = {"source": "TPB", "link": "x", "metadata": {"_lazy_fetched": True}}
+    state = _AppState()
+    assert _kick_off_metadata_fetch(state, entry) is None
+
+
+def test_kick_off_metadata_fetch_returns_none_when_in_progress(reset_state):
+    from torrent_hound.tui import _kick_off_metadata_fetch
+    entry = {"source": "TPB", "link": "x", "metadata": {"_lazy_fetching": True}}
+    state = _AppState()
+    assert _kick_off_metadata_fetch(state, entry) is None
+
+
+def test_kick_off_metadata_fetch_tpb_writes_back_on_success(reset_state):
+    """Worker fetches via mocked _fetch_tpb_metadata, merges into entry's
+    metadata, sets _lazy_fetched, clears _lazy_fetching."""
+    from torrent_hound.tui import _kick_off_metadata_fetch
+    entry = {"source": "TPB", "link": "https://example/torrent/1", "metadata": {}}
+    state = _AppState()
+    with patch("torrent_hound.tui._fetch_tpb_metadata",
+               return_value={"uploader": "alice", "files": 3}):
+        thread = _kick_off_metadata_fetch(state, entry)
+    assert thread is not None
+    thread.join(timeout=2.0)
+    md = entry["metadata"]
+    assert md["uploader"] == "alice"
+    assert md["files"] == 3
+    assert md["_lazy_fetched"] is True
+    assert "_lazy_fetching" not in md
+    assert state.metadata_view_loading is False
+    assert state.metadata_view_error is None
+
+
+def test_kick_off_metadata_fetch_yts_uses_movie_id(reset_state):
+    from torrent_hound.tui import _kick_off_metadata_fetch
+    entry = {"source": "YTS", "link": "x", "metadata": {"_yts_movie_id": 42}}
+    state = _AppState()
+    with patch("torrent_hound.tui._fetch_yts_movie_details",
+               return_value={"cast": "A, B"}) as m:
+        thread = _kick_off_metadata_fetch(state, entry)
+    assert thread is not None
+    thread.join(timeout=2.0)
+    m.assert_called_once_with(42)
+    assert entry["metadata"]["cast"] == "A, B"
+    assert entry["metadata"]["_lazy_fetched"] is True
+
+
+def test_kick_off_metadata_fetch_sets_error_on_empty_response(reset_state):
+    """Empty dict from the source-specific fetcher → error set, _lazy_fetched
+    NOT set so re-pressing v retries."""
+    from torrent_hound.tui import _kick_off_metadata_fetch
+    entry = {"source": "TPB", "link": "x", "metadata": {}}
+    state = _AppState()
+    with patch("torrent_hound.tui._fetch_tpb_metadata", return_value={}):
+        thread = _kick_off_metadata_fetch(state, entry)
+    thread.join(timeout=2.0)
+    assert state.metadata_view_error is not None
+    assert "_lazy_fetched" not in entry["metadata"]
+    assert "_lazy_fetching" not in entry["metadata"]
+
+
 def test_kick_off_rd_no_token_toasts_and_returns_none(reset_state):
     """No token configured → friendly toast, no thread started, mode unchanged."""
     state = _AppState(mode=RESULTS)
