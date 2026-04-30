@@ -53,6 +53,36 @@ def tpb_detail_iso_html():
 
 
 @pytest.fixture
+def tpb_detail_r1_html():
+    """TPB detail page using a multi-line `Directors\\n<names>\\n\\n` block
+    plus a `Stars\\n<names>\\n\\n` block, with the plot as a bare paragraph
+    (no `Plot:` label). Sanitised."""
+    return (FIXTURES / "tpb_detail_R1.html").read_bytes()
+
+
+@pytest.fixture
+def tpb_detail_r2_html():
+    """TPB detail page with slash-separated genres and a bare-paragraph plot
+    after the IMDB URL line. Sanitised."""
+    return (FIXTURES / "tpb_detail_R2.html").read_bytes()
+
+
+@pytest.fixture
+def tpb_detail_r3_html():
+    """TPB detail page using bracketed labels (`[FRAME RATE]`,
+    `[AUDIO STREAM 1]`, `[SUBTITLES]`, `[RUNTIME]`) with `1Hr 32Min`
+    style runtime. Sanitised."""
+    return (FIXTURES / "tpb_detail_R3.html").read_bytes()
+
+
+@pytest.fixture
+def tpb_detail_r8_html():
+    """TPB detail page using aligned `Label : value` rows with nested
+    Video/Audio sub-sections; runtime as `1 h 32 min`. Sanitised."""
+    return (FIXTURES / "tpb_detail_R8.html").read_bytes()
+
+
+@pytest.fixture
 def yts_movie_details_json():
     """Captured, sanitised `movie_details.json?with_cast=true` response for
     a YTS movie. Used by the lazy-fetch parser tests."""

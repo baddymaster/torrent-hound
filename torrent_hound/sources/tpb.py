@@ -144,19 +144,165 @@ _DT_LABEL_TO_FIELD = {
 }
 
 _IMDB_URL_RE = re.compile(r'imdb\.com/title/(tt\d+)')
-# TPB description lines often have a leading space (the .nfo block is
-# indented). Allow `^\s*` before each label.
+# Single-line `Label: value` patterns (GalaxyRG-style descriptions).
 _GENRE_RE    = re.compile(r'^\s*Genre:\s*(.+)', re.MULTILINE)
-_DIRECTOR_RE = re.compile(r'^\s*Director:\s*(.+)', re.MULTILINE)
+_DIRECTOR_RE = re.compile(r'^\s*Directors?:\s*(.+)', re.MULTILINE)
 _STARS_RE    = re.compile(r'^\s*Stars?:\s*(.+)', re.MULTILINE)
 _PLOT_RE     = re.compile(r'^\s*Plot:\s*(.+?)(?=\n\s*\n|\n\s*[A-Z]+:|\Z)', re.MULTILINE | re.DOTALL)
-_DURATION_RE = re.compile(r'Duration\s*=\s*(\d{1,2}):(\d{2}):(\d{2})')
-# Lines of the form `LABEL: value` for the misc bucket. Allow leading
-# whitespace; LABEL is uppercase letters/digits/underscore/dash/space (≥ 2 chars).
-_MISC_LINE_RE = re.compile(r'^\s*([A-Z][A-Z0-9 _-]{1,30}):\s*(.+)', re.MULTILINE)
-# Labels we capture as structured fields above — exclude from misc.
-_KNOWN_LABELS = frozenset({"GENRE", "DIRECTOR", "DIRECTORS", "STAR", "STARS",
-                            "PLOT", "RUNTIME", "DURATION", "IMDB"})
+# Multi-line block format used by IMDB-style scrapes:
+#   Directors
+#   Name One
+#   Name Two
+#   <blank>
+_DIRECTOR_BLOCK_RE = re.compile(
+    r'^\s*Directors?\s*$\n((?:^\s*[^\s:][^\n:]*$\n?)+?)(?=^\s*$|\Z)',
+    re.MULTILINE,
+)
+_STARS_BLOCK_RE = re.compile(
+    r'^\s*Stars?\s*$\n((?:^\s*[^\s:][^\n:]*$\n?)+?)(?=^\s*$|\Z)',
+    re.MULTILINE,
+)
+# Slash-separated genre line on its own (no `Genre:` prefix). Conservative —
+# require ≥ 3 segments to avoid false positives on "I/O" or "and/or" prose.
+_SLASH_GENRE_RE = re.compile(
+    r'^\s*([A-Z][a-z]+(?:\s*/\s*[A-Z][a-z]+){2,})\s*$',
+    re.MULTILINE,
+)
+# Multiple duration formats — try each in order:
+#   `Duration = HH:MM:SS` (existing GalaxyRG MEDIAINFO)
+#   `Duration : 1 h 32 min` (R8 aligned-row format)
+#   `[RUNTIME]:.[ 1Hr 32Min` (R3 bracketed format)
+_DURATION_HMS_RE = re.compile(
+    r'(?:Duration|Runtime|RUNTIME\b[^\n]*)[\s=:]+\s*(\d{1,2}):(\d{2}):(\d{2})',
+    re.IGNORECASE,
+)
+_DURATION_HM_RE = re.compile(
+    r'(?:Duration|Runtime|\[\s*RUNTIME\s*\][^\n]*?)[\s=:]+\s*\[?\s*(\d+)\s*(?:h|hr|hour)s?\.?\s*(\d+)\s*(?:m|min|minute)s?\.?',
+    re.IGNORECASE,
+)
+# Misc-line patterns (broader). Three shapes the parser recognises:
+#   `[LABEL]:....[ value`        — bracketed label + bracketed value (R3)
+#   `Label    : value`           — aligned `Label : value` with ≥ 1 space pad (R8)
+#   `LABEL: value`               — uppercase-only label (existing)
+_MISC_BRACKETED_RE = re.compile(
+    r'^\s*\[([A-Z][A-Z0-9 _-]{1,30})\][:.\s]+\[\s*(.+?)\s*\]?\s*$',
+    re.MULTILINE,
+)
+_MISC_ALIGNED_RE = re.compile(
+    r'^\s*\.?([A-Z][A-Za-z0-9 _()-]{1,40}?)\s+:\s+(.+?)\s*$',
+    re.MULTILINE,
+)
+_MISC_UPPER_RE = re.compile(
+    r'^\s*([A-Z][A-Z0-9 _-]{1,30}):\s*(.+)',
+    re.MULTILINE,
+)
+# Labels we already capture as structured fields — exclude from misc.
+_KNOWN_LABELS = frozenset({
+    "GENRE", "DIRECTOR", "DIRECTORS", "STAR", "STARS", "PLOT",
+    "RUNTIME", "DURATION", "IMDB",
+})
+
+
+def _extract_director(desc: str) -> str | None:
+    """Try `Director:` single-line first, fall back to `Directors\\n<block>`."""
+    if (m := _DIRECTOR_RE.search(desc)):
+        return m.group(1).strip()
+    if (m := _DIRECTOR_BLOCK_RE.search(desc)):
+        names = [ln.strip() for ln in m.group(1).splitlines() if ln.strip()]
+        if names:
+            return ", ".join(names)
+    return None
+
+
+def _extract_cast(desc: str) -> str | None:
+    """Try `Stars:` single-line first, fall back to `Stars\\n<block>`. Cap at 5."""
+    if (m := _STARS_RE.search(desc)):
+        names = [n.strip() for n in m.group(1).split(",") if n.strip()]
+    elif (m := _STARS_BLOCK_RE.search(desc)):
+        names = [ln.strip() for ln in m.group(1).splitlines() if ln.strip()]
+    else:
+        return None
+    return ", ".join(names[:5]) if names else None
+
+
+def _extract_genre(desc: str) -> str | None:
+    """Try `Genre:` single-line first, fall back to a bare slash-separated line."""
+    if (m := _GENRE_RE.search(desc)):
+        return m.group(1).strip()
+    if (m := _SLASH_GENRE_RE.search(desc)):
+        return m.group(1).strip()
+    return None
+
+
+_STRUCTURED_BOUNDARY_RE = re.compile(
+    r'^\s*\[?([A-Z][A-Z0-9 _-]+)\]?\s*[:.]'   # R3 bracketed / GalaxyRG uppercase
+    r'|^\s*Directors?\s*$'                      # R1 multi-line block marker
+    r'|^\s*Stars?\s*$',
+    re.MULTILINE,
+)
+
+
+def _extract_summary(desc: str) -> str | None:
+    """Try `Plot:` label first; otherwise fall back to the longest plain-prose
+    paragraph in the description that appears *before* any structured-field
+    block. Restricting to the prefix prevents uploader notes that happen
+    to look like prose (e.g. R3's `Compliant with Xbox360/...` paragraph
+    that appears after a long bracketed-fields block) from being mistaken
+    for a movie plot."""
+    if (m := _PLOT_RE.search(desc)):
+        return m.group(1).strip()
+    # Limit the search to the description prefix that precedes any
+    # obvious structured-field row — the plot, when bare, lives there.
+    boundary = _STRUCTURED_BOUNDARY_RE.search(desc)
+    prefix = desc[:boundary.start()] if boundary else desc
+    candidates = []
+    for para in re.split(r'\n\s*\n', prefix):
+        text = para.strip()
+        if len(text) < 80:
+            continue
+        if text.startswith("[") or "~~~" in text:
+            continue
+        head = text[:100]
+        if ":" in head or "=" in head:
+            continue
+        candidates.append(text)
+    if not candidates:
+        return None
+    return max(candidates, key=len)
+
+
+def _extract_runtime(desc: str) -> str | None:
+    """Try HH:MM:SS first, then 'X h Y min' / '[RUNTIME]:.[ XHr YMin'."""
+    if (m := _DURATION_HMS_RE.search(desc)):
+        h, mn, s = (int(x) for x in m.groups())
+        return _fmt_runtime(h * 3600 + mn * 60 + s)
+    if (m := _DURATION_HM_RE.search(desc)):
+        h, mn = (int(x) for x in m.groups())
+        return _fmt_runtime(h * 3600 + mn * 60)
+    return None
+
+
+def _extract_misc(desc: str) -> dict:
+    """Collect any `LABEL: value`-shaped lines we didn't structure as a known
+    field. Three line shapes are recognised; the first match wins per label
+    so a bracketed line doesn't double-count as an aligned line."""
+    misc: dict = {}
+
+    def _add(label: str, value: str) -> None:
+        label = label.strip()
+        if not label or label.upper() in _KNOWN_LABELS:
+            return
+        # Don't overwrite an earlier capture for the same label.
+        if label not in misc:
+            misc[label] = value.strip()
+
+    for m in _MISC_BRACKETED_RE.finditer(desc):
+        _add(m.group(1), m.group(2))
+    for m in _MISC_ALIGNED_RE.finditer(desc):
+        _add(m.group(1), m.group(2))
+    for m in _MISC_UPPER_RE.finditer(desc):
+        _add(m.group(1), m.group(2))
+    return misc
 
 
 def _parse_tpb_detail_html(html_bytes) -> dict:
@@ -209,29 +355,21 @@ def _parse_tpb_detail_html(html_bytes) -> dict:
 
     if (m := _IMDB_URL_RE.search(desc)):
         md['imdb_code'] = m.group(1)
-    if (m := _GENRE_RE.search(desc)):
-        md['genre'] = m.group(1).strip()
-    if (m := _DIRECTOR_RE.search(desc)):
-        md['director'] = m.group(1).strip()
-    if (m := _STARS_RE.search(desc)):
-        # Cap at 5 names so the panel row stays short
-        names = [n.strip() for n in m.group(1).split(',')]
-        md['cast'] = ', '.join(names[:5])
-    if (m := _PLOT_RE.search(desc)):
-        md['summary'] = m.group(1).strip()
-    if (m := _DURATION_RE.search(desc)):
-        h, mn, s = (int(x) for x in m.groups())
-        runtime = _fmt_runtime(h * 3600 + mn * 60 + s)
-        if runtime:
-            md['runtime'] = runtime
+    if (val := _extract_genre(desc)):
+        md['genre'] = val
+    if (val := _extract_director(desc)):
+        md['director'] = val
+    if (val := _extract_cast(desc)):
+        md['cast'] = val
+    if (val := _extract_summary(desc)):
+        md['summary'] = val
+    runtime = _extract_runtime(desc)
+    if runtime:
+        md['runtime'] = runtime
 
-    # 3. Misc — every `LABEL: value` line that didn't match a known field.
-    misc: dict = {}
-    for m in _MISC_LINE_RE.finditer(desc):
-        label = m.group(1).strip()
-        if label.upper() in _KNOWN_LABELS:
-            continue
-        misc[label] = m.group(2).strip()
+    # 3. Misc — bracketed/aligned/uppercase `LABEL: value` lines that
+    # didn't match a known structured field.
+    misc = _extract_misc(desc)
     if misc:
         md['misc'] = misc
 
