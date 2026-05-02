@@ -1,0 +1,20 @@
+# Local pre-commit gate. Run once per clone:
+#   .venv/bin/pip install pre-commit && .venv/bin/pre-commit install
+# Manually re-run against the working tree:
+#   .venv/bin/pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.11
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: .venv/bin/python -m pytest -q
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]

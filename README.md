@@ -253,6 +253,12 @@ Tests run fully offline — parser fixtures are captured HTML, network calls
 are mocked. The TUI is unit-tested at the `read_key` and `handle_key` layers
 (see `tests/test_tui.py`); the rich.live event loop is manual-tested only.
 
+Optional pre-commit hook (runs ruff + the test suite before every commit):
+
+```bash
+pre-commit install
+```
+
 ### Package layout
 
 ```
