@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from torrent_hound import state as state_module
+from torrent_hound.realdebrid import _RdError
 from torrent_hound.tui import (
     FILTER,
     HELP,
@@ -739,6 +740,68 @@ def test_rd_worker_invalid_magnet_short_circuits(reset_state):
     m_add.assert_not_called()
     assert state.rd_flow is None
     assert "info-hash" in state.toast.lower()
+
+
+def test_rd_worker_links_empty_after_select_asks_retry(reset_state):
+    """selectFiles succeeded but RD hasn't materialised hoster links yet —
+    surface a 'still processing' toast and bail before unrestrict so we don't
+    pass an empty list to the dispatcher."""
+    info_peek = {"files": [{"id": 1, "path": "/x.mkv", "bytes": 1024, "selected": 0}],
+                 "status": "downloaded", "links": []}
+    info_post = {"files": info_peek["files"], "status": "queued", "links": []}
+    state = _AppState(mode=RD_WAITING)
+    state.rd_flow = _RDFlow()
+    with patch("torrent_hound.tui._rd_add_magnet", return_value="tid"), \
+         patch("torrent_hound.tui._rd_get_info", side_effect=[info_peek, info_post]), \
+         patch("torrent_hound.tui._rd_select_files"), \
+         patch("torrent_hound.tui._rd_unrestrict") as m_un:
+        _rd_worker(state, _entry(), token="tok", action="clipboard")
+    m_un.assert_not_called()
+    assert state.rd_flow is None
+    assert state.mode == RESULTS
+    assert "still processing" in state.toast.lower()
+    assert "queued" in state.toast
+
+
+def test_rd_worker_rd_error_surfaces_as_toast(reset_state):
+    """_RdError from any RD helper must be caught and toasted, never propagated."""
+    state = _AppState(mode=RD_WAITING)
+    state.rd_flow = _RDFlow()
+    with patch("torrent_hound.tui._rd_add_magnet", side_effect=_RdError("RD said no")):
+        _rd_worker(state, _entry(), token="tok", action="clipboard")
+    assert state.rd_flow is None
+    assert state.mode == RESULTS
+    assert state.toast == "RD said no"
+
+
+def test_rd_worker_keyerror_surfaces_friendly_message(reset_state):
+    """KeyError from an unexpected RD response shape (e.g. missing 'id' in addMagnet)
+    must surface a generic 'try again' toast rather than crashing the worker thread."""
+    state = _AppState(mode=RD_WAITING)
+    state.rd_flow = _RDFlow()
+    with patch("torrent_hound.tui._rd_add_magnet", side_effect=KeyError("id")):
+        _rd_worker(state, _entry(), token="tok", action="clipboard")
+    assert state.rd_flow is None
+    assert state.mode == RESULTS
+    assert "Unexpected Real-Debrid response" in state.toast
+    assert "KeyError" in state.toast
+
+
+def test_rd_worker_typeerror_surfaces_friendly_message(reset_state):
+    """TypeError from an unexpected response shape (e.g. None where a dict was
+    expected) — same defensive catch as KeyError."""
+    info = {"files": [{"id": 1, "path": "/x.mkv", "bytes": 1024, "selected": 1}],
+            "status": "downloaded", "links": ["https://rd.example/h"]}
+    state = _AppState(mode=RD_WAITING)
+    state.rd_flow = _RDFlow()
+    with patch("torrent_hound.tui._rd_add_magnet", return_value="tid"), \
+         patch("torrent_hound.tui._rd_get_info", return_value=info), \
+         patch("torrent_hound.tui._rd_unrestrict", side_effect=TypeError("None is not subscriptable")):
+        _rd_worker(state, _entry(), token="tok", action="clipboard")
+    assert state.rd_flow is None
+    assert state.mode == RESULTS
+    assert "Unexpected Real-Debrid response" in state.toast
+    assert "TypeError" in state.toast
 
 
 # ── render_table — long name handling ─────────────────────────────────
