@@ -163,9 +163,9 @@ def _print_config_path():
 
 def _revoke_rd_token():
     """Invalidate the current RD token via GET /disable_access_token, then offer to wipe it from config."""
-    # Lazy import: the RD helpers still live in the monolith during the
-    # migration. By call time the package has fully loaded and these names
-    # are accessible via `torrent_hound.<name>`.
+    # Lazy import via the package re-export — avoids an import cycle
+    # (realdebrid imports from this module) and keeps the patch target
+    # (`th._rd_request`) that the test suite monkeypatches against.
     from torrent_hound import _rd_request, _RdError
     config = _load_config()
     env_token = os.environ.get("RD_TOKEN")
