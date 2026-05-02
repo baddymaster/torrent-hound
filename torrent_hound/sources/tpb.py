@@ -1,6 +1,8 @@
-"""The Pirate Bay source: multi-domain fallback + HTML parser."""
+"""The Pirate Bay source: apibay.org JSON API (preferred) + multi-domain
+HTML fallback chain."""
 
 import re
+import urllib.parse
 
 import requests
 from bs4 import BeautifulSoup
@@ -8,7 +10,15 @@ from bs4 import BeautifulSoup
 from torrent_hound import state
 from torrent_hound.ui import colored
 
-from .base import _extract_release_tags, _fmt_date, _fmt_runtime, _https_get, _normalise_codec, removeAndReplaceSpaces
+from .base import (
+    _extract_release_tags,
+    _fmt_date,
+    _fmt_runtime,
+    _format_bytes,
+    _https_get,
+    _normalise_codec,
+    removeAndReplaceSpaces,
+)
 
 # `Movie.Title.2024.1080p` or `Movie Title (2024) [...]` — pull the
 # rightmost plausible release year. Capped at 2030 so titles whose name
@@ -16,8 +26,35 @@ from .base import _extract_release_tags, _fmt_date, _fmt_runtime, _https_get, _n
 # Odyssey`) don't get the title-year mistaken for a release date.
 _YEAR_RE = re.compile(r'\b(19\d{2}|20[0-2]\d|2030)\b')
 
-# TPB domains tried in order. Mirrors churn often; add new ones to the front
-# when they come up, drop dead ones from the tail.
+# Canonical JSON API the TPB front-end SPA uses. Documented nowhere but
+# read directly out of `thepiratebay.org/static/main.js`'s `print_trackers`
+# / fetch logic. Returns a JSON list of torrent records keyed by name and
+# info_hash; magnets are constructed client-side by the SPA.
+APIBAY_HOST = 'apibay.org'
+APIBAY_URL = f'https://{APIBAY_HOST}'
+
+# Tracker set extracted verbatim from the TPB SPA's `print_trackers()`
+# function. Embedded in client-built magnets so newly-added swarms can
+# discover peers without DHT bootstrap delay.
+TPB_TRACKERS = [
+    'udp://tracker.opentrackr.org:1337',
+    'udp://open.stealth.si:80/announce',
+    'udp://tracker.torrent.eu.org:451/announce',
+    'udp://tracker.bittor.pw:1337/announce',
+    'udp://public.popcorn-tracker.org:6969/announce',
+    'udp://tracker.dler.org:6969/announce',
+    'udp://exodus.desync.com:6969',
+    'udp://open.demonii.com:1337/announce',
+    'udp://glotorrents.pw:6969/announce',
+    'udp://tracker.coppersurfer.tk:6969',
+    'udp://torrent.gresille.org:80/announce',
+    'udp://p4p.arenabg.com:1337',
+    'udp://tracker.internetwarriors.net:1337',
+]
+
+# HTML-scraped TPB mirrors, tried after apibay if it's unreachable.
+# Mirrors churn often; add new ones to the front when they come up, drop
+# dead ones from the tail.
 TPB_DOMAINS = [
     'thepiratebay.org',
     'thepiratebay.zone',
@@ -163,14 +200,133 @@ def _parse_tpb_row(tr, base):
     }
 
 
-def searchPirateBayCondensed(search_string='', quiet_mode=False, limit=10, timeout=8, progress=None):
-    """Search TPB, trying known mirrors in order until one returns results.
-    On success, remembers the working domain for subsequent calls in this run.
+def _build_tpb_magnet(info_hash, name):
+    """Construct a TPB magnet URI matching what the SPA's print_trackers()
+    builds client-side. info_hash is a 40-char hex string."""
+    dn = urllib.parse.quote(name)
+    trackers = '&'.join(f'tr={urllib.parse.quote(t, safe="")}' for t in TPB_TRACKERS)
+    return f'magnet:?xt=urn:btih:{info_hash}&dn={dn}&{trackers}'
 
-    `progress`, if provided, receives `mirror_attempt`/`mirror_failed`/`ok`/
-    `failed` events for the TUI's source-trail display.
+
+def _tpb_slug(name):
+    """Best-effort URL slug for the TPB torrent page. The numeric id alone
+    is what TPB's router uses; the slug is decoration. Empty input yields
+    'item' so we never produce a URL ending in a stray slash."""
+    slug = re.sub(r'[^a-zA-Z0-9]+', '_', name).strip('_').lower()[:80]
+    return slug or 'item'
+
+
+def _parse_apibay_item(item):
+    """Convert one apibay JSON record into a Result-shaped dict, or return
+    None when the item is the 'no results' sentinel or missing required
+    fields. Apibay's empty response is a single record with id='0' and
+    info_hash='0' * 40."""
+    info_hash = (item.get('info_hash') or '').strip()
+    name = (item.get('name') or '').strip()
+    item_id = item.get('id') or ''
+    if not info_hash or not name or info_hash == '0' * 40 or item_id == '0':
+        return None
+    try:
+        seeders = int(item.get('seeders', 0))
+        leechers = int(item.get('leechers', 0))
+        size_bytes = int(item.get('size', 0))
+    except (ValueError, TypeError):
+        return None
+    try:
+        ratio = format(seeders / leechers, '.1f') if leechers else 'inf'
+    except ZeroDivisionError:
+        ratio = 'inf'
+
+    metadata: dict = {'name': name}
+    metadata.update(_extract_release_tags(name))
+    year_matches = _YEAR_RE.findall(name)
+    if year_matches:
+        metadata['released'] = year_matches[-1]
+    if item.get('imdb'):
+        metadata['imdb_code'] = item['imdb']
+    if item.get('username'):
+        metadata['uploader'] = item['username']
+    try:
+        added = int(item.get('added') or 0)
+        if added:
+            d = _fmt_date(added)
+            if d:
+                metadata['uploaded'] = d
+    except (ValueError, TypeError):
+        pass
+    if item.get('num_files'):
+        try:
+            metadata['files'] = int(item['num_files'])
+        except (ValueError, TypeError):
+            pass
+
+    return {
+        'name': name,
+        'link': f'https://thepiratebay.org/torrent/{item_id}/{_tpb_slug(name)}',
+        'seeders': seeders,
+        'leechers': leechers,
+        'size': _format_bytes(size_bytes),
+        'ratio': ratio,
+        'magnet': _build_tpb_magnet(info_hash, name),
+        'metadata': metadata,
+    }
+
+
+def _search_apibay(search_string, limit=10, timeout=8, progress=None):
+    """Hit apibay.org's q.php JSON endpoint — the canonical data source
+    the TPB SPA uses. Returns a Result-shaped list (possibly empty when
+    apibay says 'No results returned'), or None when apibay itself is
+    unreachable / returns non-JSON / wrong shape so the caller can fall
+    back to HTML mirrors."""
+    url = f'{APIBAY_URL}/q.php?q={urllib.parse.quote_plus(search_string)}'
+    if progress:
+        progress({'type': 'mirror_attempt', 'mirror': APIBAY_HOST})
+    try:
+        r = _https_get(url, timeout=timeout)
+        data = r.json()
+    except (requests.RequestException, ValueError):
+        if progress:
+            progress({'type': 'mirror_failed', 'mirror': APIBAY_HOST})
+        return None
+    if not isinstance(data, list):
+        if progress:
+            progress({'type': 'mirror_failed', 'mirror': APIBAY_HOST})
+        return None
+
+    rows = []
+    for item in data:
+        parsed = _parse_apibay_item(item)
+        if parsed is not None:
+            rows.append(parsed)
+            if len(rows) >= limit:
+                break
+
+    state.tpb_url = url
+    if progress:
+        if rows:
+            progress({'type': 'ok', 'count': len(rows), 'mirror': APIBAY_HOST})
+        else:
+            progress({'type': 'empty'})
+    return rows
+
+
+def searchPirateBayCondensed(search_string='', quiet_mode=False, limit=10, timeout=8, progress=None):
+    """Try the apibay JSON API first — that's the canonical data source the
+    TPB front-end SPA fetches from, so it's what 'thepiratebay.org works'
+    actually means in practice. Fall back to legacy HTML mirrors when
+    apibay is unreachable.
+
+    `progress`, if provided, receives `mirror_attempt`/`mirror_failed`/
+    `ok`/`empty`/`failed` events for the TUI's source-trail display.
     """
-    # Try last-known-good domain first, then the rest
+    api_results = _search_apibay(search_string, limit=limit, timeout=timeout, progress=progress)
+    if api_results is not None:
+        # apibay responded — definitive (success or genuine empty); don't
+        # probe HTML mirrors. Same logic as the per-mirror empty case.
+        state.results_tpb_condensed = api_results
+        return api_results
+
+    # apibay unreachable — fall through to legacy HTML mirror chain.
     domains_to_try = [state.tpb_working_domain] + [d for d in TPB_DOMAINS if d != state.tpb_working_domain]
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
 

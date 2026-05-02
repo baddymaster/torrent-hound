@@ -98,6 +98,148 @@ def test_build_results_table_strips_wide_unicode(th):
     assert "YG" in cleaned
 
 
+# --- apibay JSON path ----------------------------------------------------
+
+def test_parse_apibay_item_extracts_full_record(th, apibay_ubuntu_json):
+    """An apibay record produces a Result-shaped dict with a constructed
+    magnet, an thepiratebay.org link, normalised fields, and metadata."""
+    parsed = th.sources.tpb._parse_apibay_item(apibay_ubuntu_json[0])
+    assert parsed is not None
+    required = {"name", "link", "seeders", "leechers", "magnet", "size", "ratio"}
+    assert required.issubset(parsed.keys())
+    assert parsed["magnet"].startswith("magnet:?xt=urn:btih:")
+    assert parsed["link"].startswith("https://thepiratebay.org/torrent/")
+    assert isinstance(parsed["seeders"], int)
+    assert isinstance(parsed["leechers"], int)
+    # Size is humanised, not raw bytes
+    assert any(unit in parsed["size"] for unit in ("B", "KB", "MB", "GB"))
+
+
+def test_parse_apibay_item_constructs_magnet_with_canonical_trackers(th, apibay_ubuntu_json):
+    """The magnet must carry every tracker from TPB_TRACKERS — a swarm-
+    discovery regression we'd otherwise notice only in the wild."""
+    parsed = th.sources.tpb._parse_apibay_item(apibay_ubuntu_json[0])
+    for tracker in th.sources.tpb.TPB_TRACKERS:
+        # Trackers are URL-encoded inside the magnet
+        import urllib.parse
+        assert urllib.parse.quote(tracker, safe="") in parsed["magnet"]
+
+
+def test_parse_apibay_item_returns_none_for_no_results_sentinel(th):
+    """Apibay returns a single sentinel item when the query has no matches.
+    The parser must skip it so the caller can emit `empty` cleanly."""
+    sentinel = {
+        "id": "0", "name": "No results returned",
+        "info_hash": "0" * 40, "leechers": "0", "seeders": "0",
+        "size": "0", "num_files": "0", "added": "0",
+    }
+    assert th.sources.tpb._parse_apibay_item(sentinel) is None
+
+
+def test_parse_apibay_item_returns_none_for_malformed_record(th):
+    """Records missing required keys must be skipped, not raise."""
+    assert th.sources.tpb._parse_apibay_item({}) is None
+    assert th.sources.tpb._parse_apibay_item({"name": "x"}) is None
+    assert th.sources.tpb._parse_apibay_item({"info_hash": "abc"}) is None
+
+
+def test_search_apibay_emits_ok_event_on_results(th, apibay_ubuntu_json):
+    """End-to-end: apibay returns a list, the function parses it and emits
+    a single ok event with the count."""
+    from unittest.mock import MagicMock, patch
+    fake_resp = MagicMock()
+    fake_resp.json.return_value = apibay_ubuntu_json
+    fake_resp.status_code = 200
+    fake_resp.headers = {}
+    events = []
+    with patch.object(th.sources.tpb, "_https_get", return_value=fake_resp):
+        rows = th.sources.tpb._search_apibay("ubuntu", progress=lambda e: events.append(e))
+    assert rows
+    assert any(e["type"] == "ok" for e in events)
+
+
+def test_search_apibay_emits_empty_event_on_no_results_sentinel(th):
+    """Apibay's no-results sentinel must surface as `empty`, not `ok` and not failed."""
+    from unittest.mock import MagicMock, patch
+    sentinel = [{
+        "id": "0", "name": "No results returned", "info_hash": "0" * 40,
+        "leechers": "0", "seeders": "0", "size": "0",
+        "num_files": "0", "added": "0", "username": "", "category": "0", "imdb": "",
+    }]
+    fake_resp = MagicMock()
+    fake_resp.json.return_value = sentinel
+    fake_resp.status_code = 200
+    fake_resp.headers = {}
+    events = []
+    with patch.object(th.sources.tpb, "_https_get", return_value=fake_resp):
+        rows = th.sources.tpb._search_apibay("zzznomatch", progress=lambda e: events.append(e))
+    assert rows == []
+    assert any(e["type"] == "empty" for e in events)
+
+
+def test_search_apibay_returns_none_on_network_error(th):
+    """On a RequestException we return None so the caller falls back to
+    HTML mirrors. We also emit `mirror_failed` so the trail counts the
+    apibay attempt as a retry rather than silently skipping it."""
+    from unittest.mock import patch
+
+    import requests
+    events = []
+    with patch.object(th.sources.tpb, "_https_get", side_effect=requests.ConnectionError("dead")):
+        result = th.sources.tpb._search_apibay("ubuntu", progress=lambda e: events.append(e))
+    assert result is None
+    assert any(e["type"] == "mirror_failed" for e in events)
+
+
+def test_search_apibay_returns_none_on_non_list_response(th):
+    """A non-list response (e.g. error JSON object) must return None for fallback."""
+    from unittest.mock import MagicMock, patch
+    fake_resp = MagicMock()
+    fake_resp.json.return_value = {"error": "bad request"}
+    fake_resp.status_code = 200
+    fake_resp.headers = {}
+    with patch.object(th.sources.tpb, "_https_get", return_value=fake_resp):
+        assert th.sources.tpb._search_apibay("ubuntu") is None
+
+
+def test_searchpiratebay_uses_apibay_first(th, apibay_ubuntu_json):
+    """The orchestrator must hit apibay before any HTML mirror — when
+    apibay succeeds, no HTML mirror should be touched."""
+    from unittest.mock import MagicMock, patch
+    fake_resp = MagicMock()
+    fake_resp.json.return_value = apibay_ubuntu_json
+    fake_resp.status_code = 200
+    fake_resp.headers = {}
+    html_mirror_calls = []
+    with patch.object(th.sources.tpb, "_https_get", return_value=fake_resp), \
+         patch.object(th.sources.tpb, "_parse_tpb_html",
+                      side_effect=lambda *a, **kw: html_mirror_calls.append(a) or []):
+        results = th.searchPirateBayCondensed("ubuntu", quiet_mode=True)
+    assert results
+    assert html_mirror_calls == []  # HTML scrape never invoked
+
+
+def test_searchpiratebay_falls_back_to_html_when_apibay_fails(th, tpb_ubuntu_html):
+    """If apibay raises, HTML mirrors should still be tried."""
+    from unittest.mock import MagicMock, patch
+
+    import requests
+
+    def fake_https_get(url, **kwargs):
+        if "apibay.org" in url:
+            raise requests.ConnectionError("apibay down")
+        # HTML mirror call
+        resp = MagicMock()
+        resp.content = tpb_ubuntu_html
+        resp.status_code = 200
+        resp.headers = {}
+        return resp
+
+    with patch.object(th.sources.tpb, "_https_get", side_effect=fake_https_get):
+        results = th.searchPirateBayCondensed("ubuntu", quiet_mode=True)
+    assert len(results) > 0  # HTML fallback yielded results
+
+
 def test_parse_tpb_html_handles_modern_8cell_layout(th, tpb_modern_layout_html):
     """tpb.party (and similar mirrors) now serve an 8-cell row layout with
     no `detLink` class and the magnet/size/seed/leech each in their own td.
