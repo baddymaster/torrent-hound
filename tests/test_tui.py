@@ -925,6 +925,46 @@ def test_kick_off_metadata_fetch_tpb_writes_back_on_success(reset_state):
     assert state.metadata_view_error is None
 
 
+def test_kick_off_metadata_fetch_tpb_routes_apibay_rows_to_apibay(reset_state):
+    """A TPB row with `_apibay_id` in metadata must trigger the apibay
+    path (`_fetch_apibay_details`) rather than the legacy HTML scraper —
+    thepiratebay.org/torrent/<id> is now the SPA shell, so scraping it
+    yields nothing useful for apibay-sourced rows."""
+    from torrent_hound.tui import _kick_off_metadata_fetch
+    entry = {
+        "source": "TPB", "link": "https://thepiratebay.org/torrent/123/x",
+        "metadata": {"_apibay_id": "123"},
+    }
+    state = _AppState()
+    with patch("torrent_hound.tui._fetch_apibay_details", return_value={"director": "x"}) as m_apibay, \
+         patch("torrent_hound.tui._fetch_tpb_metadata") as m_html:
+        thread = _kick_off_metadata_fetch(state, entry)
+    thread.join(timeout=2.0)
+    m_apibay.assert_called_once_with("123")
+    m_html.assert_not_called()
+    assert entry["metadata"]["director"] == "x"
+    assert entry["metadata"]["_lazy_fetched"] is True
+
+
+def test_kick_off_metadata_fetch_tpb_falls_back_to_html_scrape_without_apibay_id(reset_state):
+    """An HTML-fallback row (apibay was unreachable, link points at a
+    legacy mirror like tpb.party) has no `_apibay_id`. Must still route
+    to the HTML scrape path so detail-page metadata still reaches users
+    who had to fall back."""
+    from torrent_hound.tui import _kick_off_metadata_fetch
+    entry = {
+        "source": "TPB", "link": "https://tpb.party/torrent/9/y",
+        "metadata": {},  # no _apibay_id
+    }
+    state = _AppState()
+    with patch("torrent_hound.tui._fetch_tpb_metadata", return_value={"director": "y"}) as m_html, \
+         patch("torrent_hound.tui._fetch_apibay_details") as m_apibay:
+        thread = _kick_off_metadata_fetch(state, entry)
+    thread.join(timeout=2.0)
+    m_html.assert_called_once_with("https://tpb.party/torrent/9/y")
+    m_apibay.assert_not_called()
+
+
 def test_kick_off_metadata_fetch_yts_uses_movie_id(reset_state):
     from torrent_hound.tui import _kick_off_metadata_fetch
     entry = {"source": "YTS", "link": "x", "metadata": {"_yts_movie_id": 42}}

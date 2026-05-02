@@ -259,6 +259,10 @@ def _parse_apibay_item(item):
             metadata['files'] = int(item['num_files'])
         except (ValueError, TypeError):
             pass
+    # Stash the apibay id so the metadata overlay's lazy worker can fetch
+    # `t.php?id=<id>` for the descr field instead of trying to scrape the
+    # SPA-rendered detail page (which has no server-side content).
+    metadata['_apibay_id'] = item_id
 
     return {
         'name': name,
@@ -628,6 +632,15 @@ _LABELED_PLOT_BLOCK_RE = re.compile(
 
 
 _HEADER_FIRST_LINE_RE = re.compile(r'^[A-Z][A-Z0-9 ]{3,29}\s*$')
+# Mixed-case credit-block headings (Director, Writers, Stars, Cast, Genres,
+# Plot, Synopsis, Storyline) — when these stand alone as the first line of
+# a paragraph they signal a structured-credit block, not a movie plot.
+# Without this filter the credit block can win the longest-paragraph
+# tiebreak in `_extract_summary` and get rendered as the summary.
+_BLOCK_HEADING_RE = re.compile(
+    r'^\s*(?:Directors?|Writers?|Stars?|Cast|Genres?|Plot|Synopsis|Storyline)\s*$',
+    re.IGNORECASE,
+)
 
 
 def _extract_summary(desc: str) -> str | None:
@@ -657,9 +670,11 @@ def _extract_summary(desc: str) -> str | None:
         if _NON_PLOT_KEYWORDS_RE.search(text):
             continue
         # Skip paragraphs that lead with an ALL-CAPS header line
-        # (e.g. "RELEASE NOTES\nDisc was fully supported by eac3to...").
+        # (e.g. "RELEASE NOTES\nDisc was fully supported by eac3to...")
+        # or a mixed-case credit-block heading (Director / Writers / Stars
+        # / Cast / Genres / Plot / Synopsis / Storyline).
         first_line = text.split("\n", 1)[0].strip()
-        if _HEADER_FIRST_LINE_RE.fullmatch(first_line):
+        if _HEADER_FIRST_LINE_RE.fullmatch(first_line) or _BLOCK_HEADING_RE.fullmatch(first_line):
             continue
         # Skip listy paragraphs — tracklists / episode listings often
         # land as a single paragraph (no blank lines between rows). If
@@ -797,3 +812,60 @@ def _fetch_tpb_metadata(detail_url, timeout=8):
     if r.status_code != 200:
         return {}
     return _parse_tpb_detail_html(r.content)
+
+
+def _parse_apibay_descr(descr: str) -> dict:
+    """Run the description-text extractors over an apibay `descr` field.
+    Same content shape as the legacy `<div class="nfo">` block on TPB
+    detail pages — uploader-written prose with Director / Cast / Plot /
+    Genre / Runtime / Audio / Subtitles in various formats. Reuses the
+    existing extractors so output looks identical regardless of which
+    path produced it."""
+    md: dict = {}
+    if (val := _extract_genre(descr)):
+        md['genre'] = val
+    if (val := _extract_director(descr)):
+        md['director'] = val
+    if (val := _extract_cast(descr)):
+        md['cast'] = val
+    if (val := _extract_summary(descr)):
+        md['summary'] = val
+    if (val := _extract_video_codec(descr)):
+        md['codec'] = val
+    if (val := _extract_audio(descr)):
+        md['audio'] = val
+    if (val := _extract_subtitles(descr)):
+        md['subtitles'] = val
+    runtime = _extract_runtime(descr)
+    if runtime:
+        md['runtime'] = runtime
+    misc = _extract_misc(descr)
+    if misc:
+        md['misc'] = misc
+    return md
+
+
+def _fetch_apibay_details(apibay_id, timeout=8) -> dict:
+    """Lazy-fetch a single torrent's full record from apibay's `t.php`
+    endpoint, returning a metadata-shaped dict with director / cast /
+    summary / runtime / audio / subtitles extracted from the `descr` field.
+
+    For apibay-sourced rows the canonical detail page (thepiratebay.org/
+    torrent/<id>) is now the SPA shell with no server-rendered content,
+    so the legacy HTML detail parser yields nothing. apibay's `t.php`
+    returns the same uploader description as a JSON field, which is
+    exactly what we need."""
+    if not apibay_id:
+        return {}
+    url = f'{APIBAY_URL}/t.php?id={int(apibay_id)}'
+    try:
+        r = _https_get(url, timeout=timeout)
+        data = r.json()
+    except (requests.RequestException, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    descr = data.get('descr') or ''
+    if not descr:
+        return {}
+    return _parse_apibay_descr(descr)

@@ -62,7 +62,7 @@ from torrent_hound.realdebrid import (
     _strip_ansi,
 )
 from torrent_hound.sources import searchAllSites
-from torrent_hound.sources.tpb import _fetch_tpb_metadata
+from torrent_hound.sources.tpb import _fetch_apibay_details, _fetch_tpb_metadata
 from torrent_hound.sources.yts import _fetch_yts_movie_details
 from torrent_hound.ui import console as _console
 
@@ -1327,7 +1327,16 @@ def _kick_off_metadata_fetch(state: _AppState, entry: dict) -> threading.Thread 
     def _worker() -> None:
         try:
             if source == "TPB":
-                fetched = _fetch_tpb_metadata(entry["link"])
+                # Apibay-sourced rows carry _apibay_id and route to the
+                # JSON `t.php` endpoint — thepiratebay.org/torrent/<id> is
+                # now the SPA shell, so the legacy HTML detail parser
+                # extracts nothing from it. HTML-fallback rows (links to
+                # tpb.party etc.) still scrape the legacy detail page.
+                apibay_id = md.get("_apibay_id")
+                if apibay_id:
+                    fetched = _fetch_apibay_details(apibay_id)
+                else:
+                    fetched = _fetch_tpb_metadata(entry["link"])
             else:  # YTS
                 yts_id = md.get("_yts_movie_id")
                 fetched = _fetch_yts_movie_details(yts_id) if yts_id else {}

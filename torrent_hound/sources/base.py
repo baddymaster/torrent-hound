@@ -48,6 +48,7 @@ class Metadata(TypedDict, total=False):
     misc: dict
     # Internal — never rendered, used only by the lazy-fetch worker
     _yts_movie_id: int
+    _apibay_id: str
     _lazy_fetched: bool
     _lazy_fetching: bool
 

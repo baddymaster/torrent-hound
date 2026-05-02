@@ -100,6 +100,77 @@ def test_build_results_table_strips_wide_unicode(th):
 
 # --- apibay JSON path ----------------------------------------------------
 
+def test_parse_apibay_item_stores_apibay_id_for_lazy_fetch(th, apibay_ubuntu_json):
+    """Every parsed apibay row must carry _apibay_id in metadata — the
+    metadata overlay's lazy worker uses it to route to t.php for the
+    descr field, since thepiratebay.org/torrent/<id> is now the SPA shell
+    and yields nothing to the legacy HTML parser."""
+    parsed = th.sources.tpb._parse_apibay_item(apibay_ubuntu_json[0])
+    assert parsed["metadata"]["_apibay_id"] == apibay_ubuntu_json[0]["id"]
+
+
+def test_parse_apibay_descr_extracts_director_cast_summary(th, apibay_torrent_detail_json):
+    """The descr field uses the multi-line block format (Director\\n<name>\\n\\n
+    Writers\\n... \\nStars\\n<name>) — exactly one of the variants the existing
+    description-text helpers already handle."""
+    descr = apibay_torrent_detail_json["descr"]
+    md = th.sources.tpb._parse_apibay_descr(descr)
+    assert md.get("director") == "Director Name"
+    assert "Actor One" in md.get("cast", "")
+    assert md.get("summary", "").startswith("A character-driven drama")
+    # Genre / Duration / Audio / Subtitles labelled lines also extract
+    assert "Drama" in md.get("genre", "")
+    assert md.get("runtime") == "1h 49m"
+    assert "DTS" in md.get("audio", "")
+    assert "English" in md.get("subtitles", "")
+
+
+def test_fetch_apibay_details_returns_empty_on_error(th):
+    """Network errors and non-JSON responses must degrade to {} so the
+    metadata worker surfaces the standard 'press v again to retry' message."""
+    from unittest.mock import patch
+
+    import requests
+    with patch("torrent_hound.sources.tpb._https_get", side_effect=requests.ConnectionError("dead")):
+        assert th.sources.tpb._fetch_apibay_details(123) == {}
+
+
+def test_fetch_apibay_details_returns_empty_on_zero_id(th):
+    """Defensive: 0 / None / empty id short-circuits without hitting the network."""
+    assert th.sources.tpb._fetch_apibay_details(None) == {}
+    assert th.sources.tpb._fetch_apibay_details(0) == {}
+    assert th.sources.tpb._fetch_apibay_details("") == {}
+
+
+def test_fetch_apibay_details_returns_empty_when_descr_missing(th):
+    """Some uploads have no description; t.php returns the record with
+    descr='' — return {} so the worker reports a retry-able failure rather
+    than declaring a successful empty fetch."""
+    from unittest.mock import MagicMock, patch
+    fake = MagicMock()
+    fake.json.return_value = {"id": 1, "descr": ""}
+    fake.status_code = 200
+    fake.headers = {}
+    with patch("torrent_hound.sources.tpb._https_get", return_value=fake):
+        assert th.sources.tpb._fetch_apibay_details(1) == {}
+
+
+def test_fetch_apibay_details_parses_real_descr(th, apibay_torrent_detail_json):
+    """End-to-end: t.php returns a JSON dict with descr, _fetch_apibay_details
+    runs the description extractors over it and returns a metadata-shaped
+    dict with director/cast/summary/etc."""
+    from unittest.mock import MagicMock, patch
+    fake = MagicMock()
+    fake.json.return_value = apibay_torrent_detail_json
+    fake.status_code = 200
+    fake.headers = {}
+    with patch("torrent_hound.sources.tpb._https_get", return_value=fake):
+        result = th.sources.tpb._fetch_apibay_details(10000001)
+    assert result.get("director") == "Director Name"
+    assert "Actor One" in result.get("cast", "")
+    assert result.get("summary", "").startswith("A character-driven drama")
+
+
 def test_parse_apibay_item_extracts_full_record(th, apibay_ubuntu_json):
     """An apibay record produces a Result-shaped dict with a constructed
     magnet, an thepiratebay.org link, normalised fields, and metadata."""

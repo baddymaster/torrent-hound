@@ -47,6 +47,15 @@ def apibay_ubuntu_json():
 
 
 @pytest.fixture
+def apibay_torrent_detail_json():
+    """Sanitised apibay.org/t.php?id=<id> response — the per-torrent JSON
+    endpoint the lazy metadata-fetch worker hits for apibay-sourced rows.
+    Carries a `descr` field with the same uploader-written text that used
+    to live in the legacy detail page's <div class='nfo'>."""
+    return json.loads((FIXTURES / "apibay_torrent_detail.json").read_text())
+
+
+@pytest.fixture
 def tpb_no_hits_html():
     """Real captured TPB search response for a query with zero matches.
     The page renders the searchResult table with only its header row."""
