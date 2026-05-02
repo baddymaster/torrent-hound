@@ -915,12 +915,16 @@ def test_results_footer_returns_tier_1_even_when_too_narrow():
 
 def test_results_footer_preserves_display_order():
     """Even when tiers are partially included, the on-screen left-to-right
-    order matches the original full footer — users see hints in the same
-    visual position regardless of how wide their terminal is."""
+    order matches the canonical layout. Tier-4 hints render in priority
+    order (rd → m → cs) — rd is most useful for users who have RD
+    configured, cs the most niche."""
     from torrent_hound.tui import _select_results_footer
     text = _select_results_footer(200)
-    # Spot-check ordering: cs comes before v which comes before s
-    assert text.index("cs seedr") < text.index("v view") < text.index("s search")
+    # Tier-4 hints in user-specified order
+    assert text.index("rd real-debrid") < text.index("m magnet") < text.index("cs seedr")
+    # rd appears early; cs is pushed past the row-action and workflow tiers
+    assert text.index("rd real-debrid") < text.index("v view")
+    assert text.index("v view") < text.index("cs seedr")
 
 
 def test_render_table_truncates_overlong_name_with_ellipsis(reset_state):

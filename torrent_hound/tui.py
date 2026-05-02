@@ -1152,13 +1152,13 @@ _FOOTER_HINTS = {
 _RESULTS_FOOTER_TIERS = [
     (1, "↑↓ move"),         # essential nav
     (1, "⏎/c copy"),         # primary action
-    (4, "cs seedr"),         # niche
+    (4, "rd real-debrid"),   # power-user — first of the tier-4 hints when shown
     (4, "m magnet"),         # niche
     (3, "v view"),           # row action
     (3, "o open"),           # row action
     (3, "d download"),       # row action
     (2, "r repeat"),         # workflow
-    (4, "rd real-debrid"),   # power-user
+    (4, "cs seedr"),         # niche — last of the tier-4 hints
     (2, "s search"),         # workflow
     (2, "/ filter"),         # workflow
     (1, "? help"),           # escape hatch — always show so user can find what's hidden
