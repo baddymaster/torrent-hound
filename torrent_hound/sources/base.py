@@ -6,8 +6,11 @@ it without any declaration or subclassing. Keeps the split minimal.
 """
 
 import re as _re
+import urllib.parse as _urllib_parse
 from datetime import datetime, timezone
 from typing import Protocol, TypedDict
+
+import requests as _requests
 
 
 class Metadata(TypedDict, total=False):
@@ -74,6 +77,44 @@ class Source(Protocol):
     def __call__(
         self, search_string: str, quiet_mode: bool = False
     ) -> list[Result]: ...
+
+
+def _https_get(url, *, headers=None, timeout=8, max_redirects=10):
+    """`requests.get` that follows redirects without ever downgrading to
+    plaintext.
+
+    Initial URL must be `https://`. Any `http://` in a Location header is
+    rewritten to `https://` before following — defends against servers
+    whose redirect chains transit port 80 (TPB does this: an https request
+    gets a 302 with `Location: http://...` which then 301s back to https,
+    landing one round-trip on plaintext if `requests`'s default
+    follow-anything-anywhere behaviour is used). Other non-https schemes
+    (`file://`, `ftp://`, etc.) raise `InvalidURL`.
+
+    Otherwise behaves like `requests.get(allow_redirects=True)` —
+    `RequestException` subclasses surface unchanged for callers that
+    catch them.
+    """
+    if not url.startswith("https://"):
+        raise _requests.exceptions.InvalidURL(f"refusing non-https URL: {url}")
+    seen: set[str] = set()
+    for _ in range(max_redirects):
+        if url in seen:
+            raise _requests.TooManyRedirects(f"redirect loop at {url}")
+        seen.add(url)
+        r = _requests.get(url, headers=headers, timeout=timeout, allow_redirects=False)
+        if r.status_code in (301, 302, 303, 307, 308) and r.headers.get("Location"):
+            loc = _urllib_parse.urljoin(url, r.headers["Location"])
+            if loc.startswith("http://"):
+                loc = "https://" + loc[len("http://"):]
+            elif not loc.startswith("https://"):
+                raise _requests.exceptions.InvalidURL(
+                    f"redirect to non-https URL: {loc}"
+                )
+            url = loc
+            continue
+        return r
+    raise _requests.TooManyRedirects(f"too many redirects starting at {url}")
 
 
 def removeAndReplaceSpaces(string: str) -> str:

@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from torrent_hound import state
 from torrent_hound.ui import colored
 
-from .base import _extract_release_tags, _fmt_date, _fmt_runtime, _normalise_codec, removeAndReplaceSpaces
+from .base import _extract_release_tags, _fmt_date, _fmt_runtime, _https_get, _normalise_codec, removeAndReplaceSpaces
 
 # `Movie.Title.2024.1080p` or `Movie Title (2024) [...]` — pull the
 # rightmost plausible release year. Capped at 2030 so titles whose name
@@ -179,7 +179,7 @@ def searchPirateBayCondensed(search_string='', quiet_mode=False, limit=10, timeo
         if progress:
             progress({"type": "mirror_attempt", "mirror": domain})
         try:
-            r = requests.get(url, headers=headers, timeout=timeout)
+            r = _https_get(url, headers=headers, timeout=timeout)
             parsed = _parse_tpb_html(r.content, domain=domain, limit=limit)
             if parsed:
                 state.tpb_working_domain = domain
@@ -635,7 +635,7 @@ def _fetch_tpb_metadata(detail_url, timeout=8):
     error in the panel footer)."""
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
     try:
-        r = requests.get(detail_url, headers=headers, timeout=timeout)
+        r = _https_get(detail_url, headers=headers, timeout=timeout)
     except requests.RequestException:
         return {}
     if r.status_code != 200:

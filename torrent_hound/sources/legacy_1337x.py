@@ -13,18 +13,17 @@ parity with the old code path. Replace with whatever evades CF when the
 landscape changes.
 """
 
-import requests
 from bs4 import BeautifulSoup
 
 from torrent_hound import state, ui
 from torrent_hound.ui import colored
 
-from .base import removeAndReplaceSpaces
+from .base import _https_get, removeAndReplaceSpaces
 
 
 def extract_magnet_link_1337x(url):
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
-    response = requests.get(url, headers=headers)
+    response = _https_get(url, headers=headers)
     soup = BeautifulSoup(response.content, 'html.parser')
     magnet_link = soup.find('a', href=lambda href: href and href.startswith("magnet:"))
     if magnet_link:
@@ -41,7 +40,7 @@ def search1337x(search_string='', domain='1337x.to', quiet_mode=False, limit=10,
     state.url_1337x = url
 
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
-    response = requests.get(url, headers=headers)
+    response = _https_get(url, headers=headers)
     results = []
 
     if response.status_code == 403 and response.headers.get('cf-mitigated', '').lower() == 'challenge':

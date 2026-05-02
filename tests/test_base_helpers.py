@@ -125,3 +125,99 @@ def test_result_can_carry_metadata_at_runtime(th):
         "metadata": {"name": "x"},
     }
     assert r["metadata"]["name"] == "x"
+
+
+# --- _https_get redirect handling ---------------------------------------
+
+def _mk_resp(status, location=None):
+    """Build a fake `requests.Response`-shaped object for redirect tests."""
+    from unittest.mock import MagicMock
+    r = MagicMock()
+    r.status_code = status
+    r.headers = {"Location": location} if location else {}
+    return r
+
+
+def test_https_get_refuses_non_https_initial_url(th):
+    import pytest
+    import requests
+    with pytest.raises(requests.exceptions.InvalidURL, match="non-https"):
+        th.sources.base._https_get("http://example.com/api")
+
+
+def test_https_get_rewrites_http_redirect_target_to_https(th):
+    """Server returns 302 with Location: http://...  — must rewrite to
+    https:// before following so the next request never goes over plaintext.
+    Models the exact thepiratebay.org redirect chain that was leaking
+    requests onto port 80."""
+    from unittest.mock import patch
+    seen_urls = []
+
+    def fake_get(url, **kwargs):
+        seen_urls.append(url)
+        # Caller MUST be using allow_redirects=False so we drive the loop
+        assert kwargs.get("allow_redirects") is False
+        if url.startswith("https://example.com/start"):
+            return _mk_resp(302, location="http://example.com/landing")
+        if url.startswith("https://example.com/landing"):
+            return _mk_resp(200)
+        raise AssertionError(f"unexpected URL: {url}")
+
+    with patch("torrent_hound.sources.base._requests.get", side_effect=fake_get):
+        r = th.sources.base._https_get("https://example.com/start")
+
+    # Two requests in total: the original https start and the rewritten https landing
+    assert len(seen_urls) == 2
+    assert seen_urls[0] == "https://example.com/start"
+    assert seen_urls[1] == "https://example.com/landing"  # http:// rewritten to https://
+    assert all(u.startswith("https://") for u in seen_urls)
+    assert r.status_code == 200
+
+
+def test_https_get_follows_https_redirect_unchanged(th):
+    from unittest.mock import patch
+    seen = []
+
+    def fake_get(url, **kwargs):
+        seen.append(url)
+        if "/a" in url:
+            return _mk_resp(301, location="https://example.com/b")
+        return _mk_resp(200)
+
+    with patch("torrent_hound.sources.base._requests.get", side_effect=fake_get):
+        th.sources.base._https_get("https://example.com/a")
+
+    assert seen == ["https://example.com/a", "https://example.com/b"]
+
+
+def test_https_get_refuses_non_http_scheme_redirect(th):
+    """A redirect to file:// or ftp:// must be refused, not silently followed
+    or rewritten — only http/https are valid downgrade vectors we know how
+    to handle."""
+    from unittest.mock import patch
+
+    import pytest
+    import requests
+
+    def fake_get(url, **kwargs):
+        return _mk_resp(302, location="ftp://example.com/data")
+
+    with patch("torrent_hound.sources.base._requests.get", side_effect=fake_get):
+        with pytest.raises(requests.exceptions.InvalidURL, match="non-https"):
+            th.sources.base._https_get("https://example.com/")
+
+
+def test_https_get_detects_redirect_loop(th):
+    from unittest.mock import patch
+
+    import pytest
+    import requests
+
+    def fake_get(url, **kwargs):
+        # /a redirects to /b, /b redirects to /a — classic loop
+        next_url = "https://example.com/b" if url.endswith("/a") else "https://example.com/a"
+        return _mk_resp(302, location=next_url)
+
+    with patch("torrent_hound.sources.base._requests.get", side_effect=fake_get):
+        with pytest.raises(requests.TooManyRedirects):
+            th.sources.base._https_get("https://example.com/a")

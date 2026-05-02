@@ -7,7 +7,7 @@ import requests
 from torrent_hound import state
 from torrent_hound.ui import colored
 
-from .base import _extract_release_tags, _fmt_date, _format_bytes
+from .base import _extract_release_tags, _fmt_date, _format_bytes, _https_get
 
 EZTV_DOMAINS = ['eztvx.to', 'eztv.wf', 'eztv.tf', 'eztv.yt', 'eztv.it']
 
@@ -66,7 +66,7 @@ def _imdb_lookup_candidates(query, timeout=8, limit=5):
         return []
     url = f'https://v2.sg.media-imdb.com/suggestion/{slug[0]}/{slug}.json'
     try:
-        r = requests.get(url, timeout=timeout)
+        r = _https_get(url, timeout=timeout)
         out = []
         for item in r.json().get('d', []):
             if item.get('qid') == 'tvSeries':
@@ -168,7 +168,7 @@ def _fetch_eztv_torrents_for_id(imdb_id, domain, timeout):
     try:
         for page in range(1, 4):
             url = f"https://{domain}/api/get-torrents?imdb_id={imdb_id}&limit=100&page={page}"
-            r = requests.get(url, timeout=timeout)
+            r = _https_get(url, timeout=timeout)
             data = r.json()
             # Explicit zero count from the API on the first page → definitive
             # empty for this IMDB ID. Don't probe further mirrors; their

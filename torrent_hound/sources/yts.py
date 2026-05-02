@@ -8,7 +8,7 @@ import requests
 from torrent_hound import state
 from torrent_hound.ui import colored
 
-from .base import _fmt_date, _fmt_runtime
+from .base import _fmt_date, _fmt_runtime, _https_get
 
 # Per the YTS API documentation page (https://yts.bz/api), the canonical v2
 # base URL is `https://movies-api.accel.li/api/v2/`. The four yts.* mirrors
@@ -171,7 +171,7 @@ def searchYTS(search_string='', quiet_mode=False, limit=10, timeout=8, progress=
         if progress:
             progress({"type": "mirror_attempt", "mirror": domain})
         try:
-            r = requests.get(url, timeout=timeout)
+            r = _https_get(url, timeout=timeout)
             data = r.json()
             if data.get("status") == "ok":
                 # API responded successfully but has no usable matches → genuine
@@ -248,7 +248,7 @@ def _fetch_yts_movie_details(movie_id, timeout=8) -> dict:
         f"?movie_id={int(movie_id)}&with_cast=true"
     )
     try:
-        r = requests.get(url, timeout=timeout)
+        r = _https_get(url, timeout=timeout)
     except requests.RequestException:
         return {}
     if r.status_code != 200:
