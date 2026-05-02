@@ -7,6 +7,16 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.2.2] - 2026-05-02
+
+- Stripping private (_-prefixed) metadata keys from --json / --quiet output — _apibay_id and _yts_movie_id are TUI-internal routing hints and shouldn't leak into the scriptable interface
+- Routing apibay-sourced rows through apibay's t.php endpoint for the v overlay — thepiratebay.org/torrent/<id> is now a SPA shell so the legacy detail-page parser can't read it; t.php's descr field carries the same uploader description as JSON
+- Disabling redirect-following in _rd_request and surfacing any 3xx as an error — RD's API never redirects, so a 3xx implies hijack/MITM and following could leak the bearer token
+- Adding apibay.org as TPB primary lookup — the canonical JSON API the front-end SPA fetches from, so 'thepiratebay.org works' now also means it works from the CLI
+- Routing all source HTTP through a _https_get helper that rewrites http:// in Location headers to https:// — closes the port-80 leak from TPB's redirect chain
+- Patching the right TPB_DOMAINS attr in fallback tests — th.TPB_DOMAINS is a package re-export, the source reads from its own module
+- Teaching _parse_tpb_html the modern 8-cell row layout (no detLink class, magnet/size/seed/leech/uploader each in own td) so mirrors like tpb.party parse correctly
+
 ## [3.2.1] - 2026-05-02
 
 - Adding fall-through Exception catch to _rd_worker so unexpected errors still clear rd_flow and toast instead of wedging the TUI in RD_WAITING
