@@ -21,7 +21,7 @@ def test_fallback_tries_next_domain_on_connection_error(th, tpb_ubuntu_html):
             raise requests.ConnectionError("nope")
         return _make_response(tpb_ubuntu_html)
 
-    with patch.object(th, "TPB_DOMAINS", ["dead.invalid", "thepiratebay.zone"]):
+    with patch.object(th.sources.tpb, "TPB_DOMAINS", ["dead.invalid", "thepiratebay.zone"]):
         with patch.object(th.state, "tpb_working_domain", "dead.invalid"):
             with patch.object(th.requests, "get", side_effect=fake_get):
                 results = th.searchPirateBayCondensed("ubuntu", timeout=1)
@@ -38,7 +38,7 @@ def test_fallback_tries_next_domain_on_empty_response(th, tpb_ubuntu_html):
             return _make_response("<html><body>Just a moment...</body></html>")
         return _make_response(tpb_ubuntu_html)
 
-    with patch.object(th, "TPB_DOMAINS", ["dead.invalid", "thepiratebay.zone"]):
+    with patch.object(th.sources.tpb, "TPB_DOMAINS", ["dead.invalid", "thepiratebay.zone"]):
         with patch.object(th.state, "tpb_working_domain", "dead.invalid"):
             with patch.object(th.requests, "get", side_effect=fake_get):
                 results = th.searchPirateBayCondensed("ubuntu", timeout=1)
@@ -52,7 +52,7 @@ def test_fallback_returns_empty_when_all_domains_fail(th, capsys):
     def always_fail(url, **kwargs):
         raise requests.ConnectionError("all dead")
 
-    with patch.object(th, "TPB_DOMAINS", ["a.invalid", "b.invalid"]):
+    with patch.object(th.sources.tpb, "TPB_DOMAINS", ["a.invalid", "b.invalid"]):
         with patch.object(th.state, "tpb_working_domain", "a.invalid"):
             with patch.object(th.requests, "get", side_effect=always_fail):
                 results = th.searchPirateBayCondensed("ubuntu", timeout=1)
