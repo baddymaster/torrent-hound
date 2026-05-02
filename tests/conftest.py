@@ -32,6 +32,14 @@ def tpb_ubuntu_html():
 
 
 @pytest.fixture
+def tpb_modern_layout_html():
+    """Real captured TPB search response from a mirror serving the modern
+    8-cell row layout (no detLink class, magnet/size/seed/leech/uploader
+    each in their own td). Trimmed to ~12 rows for fixture size."""
+    return (FIXTURES / "tpb_search_modern_layout.html").read_bytes()
+
+
+@pytest.fixture
 def tpb_no_hits_html():
     """Real captured TPB search response for a query with zero matches.
     The page renders the searchResult table with only its header row."""

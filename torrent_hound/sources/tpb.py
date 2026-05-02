@@ -19,8 +19,8 @@ _YEAR_RE = re.compile(r'\b(19\d{2}|20[0-2]\d|2030)\b')
 # TPB domains tried in order. Mirrors churn often; add new ones to the front
 # when they come up, drop dead ones from the tail.
 TPB_DOMAINS = [
-    'thepiratebay.zone',
     'thepiratebay.org',
+    'thepiratebay.zone',
     'tpb.party',
     'piratebay.party',
     'pirateproxy.live',
@@ -40,9 +40,29 @@ def _tpb_page_is_empty_results(html) -> bool:
     return len(table.find_all("tr")) <= 1
 
 
+# A size cell looks like "6.07 GiB" or "780 MB" — number, optional decimal,
+# optional space, then a binary or decimal byte unit. Used by the modern-
+# layout parser to identify which td holds the size.
+_SIZE_CELL_RE = re.compile(r'^\d+(?:\.\d+)?\s*[KMGT]i?B$', re.IGNORECASE)
+
+
 def _parse_tpb_html(html, domain='thepiratebay.zone', limit=10):
     """Parse a TPB search-results HTML document. Returns [] if the expected
-    results table isn't present (domain is dead / blocked / CAPTCHA)."""
+    results table isn't present (domain is dead / blocked / CAPTCHA).
+
+    Two row layouts in the wild:
+
+    * Legacy: 4 td cells. tds[1] holds <a class="detLink"> + a nested
+      magnet <a> with <img alt="Magnet link"> + a <font> carrying size in
+      a comma-separated 'Uploaded ..., Size X, ULed by Y' string.
+      tds[2]/tds[3] are seeders/leechers.
+
+    * Modern (tpb.party and similar): 8 td cells. The detail link has no
+      class. Magnet, size, seeders, leechers, uploader each get their own
+      cell. Detected by walking td contents rather than relying on
+      positional indices, since the legacy layout would clobber the same
+      assumptions if we tried to be too rigid.
+    """
     soup = BeautifulSoup(html, 'html.parser')
     table = soup.find("table", {"id": "searchResult"})
     if table is None:
@@ -51,39 +71,96 @@ def _parse_tpb_html(html, domain='thepiratebay.zone', limit=10):
     parsed = []
     base = f'https://{domain}'
     for tr in trs[:limit]:
-        tds = tr.find_all("td")
         try:
-            link_name = tds[1].find("a", {"class": "detLink"})
-            href = link_name["href"]
-            if href.startswith("http"):
-                # Force https on absolute URLs — some mirrors emit http:// in
-                # the search-row href even though the page itself was served
-                # over https. Avoid leaking the user onto an http connection.
-                link = re.sub(r'^http://', 'https://', href, count=1)
-            else:
-                link = f"{base}{href}"
-            res = {
-                'name': link_name.contents[0].strip(),
-                'link': link,
-                'seeders': int(tds[2].contents[0]),
-                'leechers': int(tds[3].contents[0]),
-                'magnet': tds[1].find("img", {"alt": "Magnet link"}).parent['href'],
-                'size': str(tds[1].find("font").contents[0].split(',')[1].split(' ')[2].replace('\xa0', ' ')),
-            }
-            try:
-                res['ratio'] = format(float(res['seeders']) / float(res['leechers']), '.1f')
-            except ZeroDivisionError:
-                res['ratio'] = 'inf'
-            metadata: dict = {"name": res["name"]}
-            metadata.update(_extract_release_tags(res["name"]))
-            year_matches = _YEAR_RE.findall(res["name"])
-            if year_matches:
-                metadata["released"] = year_matches[-1]
-            res['metadata'] = metadata
-            parsed.append(res)
-        except (AttributeError, IndexError, KeyError):
-            continue  # malformed row; skip
+            row = _parse_tpb_row(tr, base)
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+            continue  # malformed row; skip — don't tank the whole page
+        if row is not None:
+            parsed.append(row)
     return parsed
+
+
+def _parse_tpb_row(tr, base):
+    """Extract one Result-shaped dict from a TPB search-results row, or
+    return None when the row doesn't carry the fields we need (ad rows,
+    separator rows, broken markup). Raises only on truly unexpected shapes
+    — the caller's per-row try/except handles those."""
+    # Detail link: any <a> whose href contains '/torrent/'. Works for both
+    # the legacy 'detLink' class and the modern bare-anchor markup.
+    name_a = tr.find('a', href=lambda h: h and '/torrent/' in h)
+    if name_a is None:
+        return None
+    name = name_a.get_text(strip=True)
+    if not name:
+        return None
+    href = name_a['href']
+    if href.startswith("http"):
+        # Force https on absolute URLs — some mirrors emit http:// in the
+        # search-row href even though the page itself was served over https.
+        link = re.sub(r'^http://', 'https://', href, count=1)
+    else:
+        link = f"{base}{href}"
+
+    # Magnet: any <a href="magnet:..."> in the row. Legacy nests it inside
+    # tds[1]; modern puts it in its own cell. Either way `tr.find` reaches it.
+    magnet_a = tr.find('a', href=lambda h: h and h.startswith('magnet:'))
+    if magnet_a is None:
+        return None
+    magnet = magnet_a['href']
+
+    # Seeders / leechers: pair of consecutive numeric-only td cells. Legacy
+    # puts them in tds[2]/tds[3]; modern in tds[5]/tds[6] (uploader at [7]).
+    tds = tr.find_all('td')
+    sl_pair: tuple[int, int] | None = None
+    for i in range(len(tds) - 1):
+        a = tds[i].get_text(strip=True)
+        b = tds[i + 1].get_text(strip=True)
+        if a.isdigit() and b.isdigit():
+            sl_pair = (int(a), int(b))
+            break
+    if sl_pair is None:
+        return None
+    seeders, leechers = sl_pair
+
+    # Size: legacy carries it inside <font> as 'Uploaded ..., Size X, ULed
+    # by Y'; modern uses a dedicated td whose text matches the size pattern.
+    size = None
+    font = tr.find('font')
+    if font and font.contents:
+        try:
+            size = str(font.contents[0]).split(',')[1].split(' ')[2].replace('\xa0', ' ')
+        except (IndexError, AttributeError):
+            size = None
+    if size is None:
+        for td in tds:
+            text = td.get_text(strip=True).replace('\xa0', ' ')
+            if _SIZE_CELL_RE.match(text):
+                size = text
+                break
+    if size is None:
+        return None
+
+    try:
+        ratio = format(float(seeders) / float(leechers), '.1f')
+    except ZeroDivisionError:
+        ratio = 'inf'
+
+    metadata: dict = {"name": name}
+    metadata.update(_extract_release_tags(name))
+    year_matches = _YEAR_RE.findall(name)
+    if year_matches:
+        metadata["released"] = year_matches[-1]
+
+    return {
+        'name': name,
+        'link': link,
+        'seeders': seeders,
+        'leechers': leechers,
+        'magnet': magnet,
+        'size': size,
+        'ratio': ratio,
+        'metadata': metadata,
+    }
 
 
 def searchPirateBayCondensed(search_string='', quiet_mode=False, limit=10, timeout=8, progress=None):

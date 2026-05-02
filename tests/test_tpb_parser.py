@@ -98,6 +98,66 @@ def test_build_results_table_strips_wide_unicode(th):
     assert "YG" in cleaned
 
 
+def test_parse_tpb_html_handles_modern_8cell_layout(th, tpb_modern_layout_html):
+    """tpb.party (and similar mirrors) now serve an 8-cell row layout with
+    no `detLink` class and the magnet/size/seed/leech each in their own td.
+    The parser must extract real results from this layout — the previous
+    parser raised TypeError on the first row, escaped to the orchestrator,
+    and surfaced as 'all mirrors failed'."""
+    results = th._parse_tpb_html(tpb_modern_layout_html, domain="tpb.party", limit=10)
+    assert len(results) > 0, "modern layout should yield at least one result"
+    required = {"name", "link", "seeders", "leechers", "magnet", "size", "ratio"}
+    for r in results:
+        assert required.issubset(r.keys()), f"missing fields in {r}"
+        assert r["magnet"].startswith("magnet:?")
+        assert isinstance(r["seeders"], int)
+        assert isinstance(r["leechers"], int)
+        assert r["link"].startswith("https://"), r["link"]
+        # Sizes look like '6.07 GiB' / '780 MB' — never empty
+        assert r["size"]
+
+
+def test_parse_tpb_html_modern_layout_size_extracted(th, tpb_modern_layout_html):
+    """Sizes in the modern layout come from a dedicated td, not the legacy
+    <font> string. Confirm at least one result has a binary-prefix size
+    matching the live tpb.party format."""
+    import re as _re
+    results = th._parse_tpb_html(tpb_modern_layout_html, domain="tpb.party", limit=10)
+    sizes = [r["size"] for r in results]
+    assert any(_re.match(r'^\d+(\.\d+)?\s*[KMGT]i?B$', s) for s in sizes), sizes
+
+
+def test_parse_tpb_html_skips_malformed_row_without_tanking(th):
+    """A single broken row must not break the rest. Previously a TypeError
+    inside the row body would escape because the per-row except didn't list
+    TypeError; the whole parse would return [] (or worse, raise)."""
+    # First row is intentionally minimal — no /torrent/ anchor, no magnet.
+    # Second row is well-formed modern-layout. Parser should yield exactly one.
+    html = b"""
+    <html><body>
+      <table id="searchResult">
+        <tr><th>x</th></tr>
+        <tr><td>broken</td></tr>
+        <tr>
+          <td><a href="/browse/303">Apps</a></td>
+          <td><a href="/torrent/1/foo">foo</a></td>
+          <td>04-25 16:35</td>
+          <td><a href="magnet:?xt=urn:btih:abcd">m</a></td>
+          <td>1.0 GiB</td>
+          <td>10</td>
+          <td>2</td>
+          <td>uploader</td>
+        </tr>
+      </table>
+    </body></html>
+    """
+    rows = th._parse_tpb_html(html, domain="tpb.party", limit=10)
+    assert len(rows) == 1
+    assert rows[0]["name"] == "foo"
+    assert rows[0]["seeders"] == 10
+    assert rows[0]["leechers"] == 2
+
+
 def test_parse_tpb_html_forces_https_on_absolute_http_links(th):
     """If TPB emits an absolute http:// href in the search row, the parser
     must rewrite it to https:// so we never hand the user an http link."""
