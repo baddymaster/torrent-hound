@@ -1,13 +1,13 @@
-"""Real-Debrid API client + the `rd<n>` REPL command.
+"""Real-Debrid API client.
 
-Covers: hash extraction from magnet, file-picker selection parsing, the
-HTTP layer (`_rd_request`) with rate-limit retry and CDN-block detection,
-the high-level torrent flow (addMagnet → selectFiles → unrestrict),
-ANSI-escape stripping for untrusted torrent metadata, and the action
-dispatch (clipboard / print / browser / Downie).
+Covers: hash extraction from magnet, the HTTP layer (`_rd_request`) with
+rate-limit retry and CDN-block detection, the high-level torrent flow
+helpers (addMagnet → selectFiles → unrestrict), ANSI-escape stripping
+for untrusted torrent metadata, and the action dispatch (`_rd_dispatch`)
+that the TUI's RD worker calls after unrestricting.
 
-`_cmd_rd` is the user-facing entry: looks up token + action from config,
-then walks the submit/poll/dispatch flow.
+The orchestrator lives in `torrent_hound.tui._rd_worker`; this module
+provides the helpers it composes.
 """
 
 import base64
@@ -19,13 +19,6 @@ import webbrowser
 
 import pyperclip
 import requests
-
-from torrent_hound.config import (
-    _config_path,
-    _load_config,
-    _resolve_rd_action,
-    _resolve_rd_token,
-)
 
 _RD_HASH_RE = re.compile(r"xt=urn:btih:([0-9a-fA-F]{40}|[A-Za-z2-7]{32})")
 
@@ -51,49 +44,6 @@ def _human_size(n):
         if n < 1024:
             return f"{n:.1f} {unit}"
     return f"{n:.1f} PB"
-
-
-def _rd_parse_selection(text, total):
-    """Parse a file-picker selection string.
-
-    Returns 'cancel', a sorted unique list of 1-indexed positions, or None
-    if the input is invalid.
-    """
-    s = text.strip().lower()
-    if s == "c":
-        return "cancel"
-    if s in ("", "all"):
-        return list(range(1, total + 1))
-    if not s.isascii():
-        # Python's int() accepts Unicode decimals (Arabic-Indic, fullwidth, etc.).
-        # Reject here so the picker never silently parses non-ASCII digits.
-        return None
-
-    picks = set()
-    for part in s.split(","):
-        part = part.strip()
-        if not part:
-            return None
-        if "-" in part:
-            bounds = part.split("-")
-            if len(bounds) != 2 or not bounds[0].strip() or not bounds[1].strip():
-                return None
-            try:
-                lo, hi = int(bounds[0]), int(bounds[1])
-            except ValueError:
-                return None
-            if lo < 1 or hi > total or lo > hi:
-                return None
-            picks.update(range(lo, hi + 1))
-        else:
-            try:
-                n = int(part)
-            except ValueError:
-                return None
-            if n < 1 or n > total:
-                return None
-            picks.add(n)
-    return sorted(picks)
 
 
 _RD_API = "https://api.real-debrid.com/rest/1.0"
@@ -248,29 +198,6 @@ def _rd_request(method, path, token, data=None):
     raise _RdError(f"Real-Debrid error {s}. Try again.")
 
 
-# NOTE: /torrents/instantAvailability/{hash} is NOT in the official RD REST API v1
-# docs at https://api.real-debrid.com/. It's a community-known endpoint used by
-# every major third-party RD client (Prowlarr, rdtclient, py-real-debrid, Stremio
-# addons, etc.). The {HASH: {"rd": [...]}} response shape is also folklore.
-#
-# RD has been progressively disabling this endpoint per-account since ~2024
-# (returns error_code 37 'Endpoint disabled'). When that happens — or if RD
-# removes the endpoint outright (error_code 3 'API method not recognized') — we
-# swallow the error and return False so the rd<n> flow degrades gracefully into
-# the "submit anyway?" prompt instead of bricking the command. Other RD errors
-# (auth, network, account locks) propagate as normal.
-def _rd_check_cached(info_hash, token):
-    try:
-        data = _rd_request("GET", f"/torrents/instantAvailability/{info_hash}", token=token) or {}
-    except _RdError as e:
-        if e.error_code in (3, 37):
-            return False
-        raise
-    entry = data.get(info_hash) or data.get(info_hash.upper()) or {}
-    variants = entry.get("rd") if isinstance(entry, dict) else entry
-    return bool(variants)
-
-
 def _rd_add_magnet(magnet, token):
     data = _rd_request("POST", "/torrents/addMagnet", token=token, data={"magnet": magnet})
     return data["id"]
@@ -309,45 +236,15 @@ def _strip_ansi(s):
     return _ANSI_ESCAPE_RE.sub('', s)
 
 
-def _rd_prompt_file_selection(files, torrent_name):
-    """Show the interactive file picker. Returns 'cancel' or 'id1,id2,...'."""
-    total = len(files)
-    print(f"\nRD: {total} files in '{_strip_ansi(torrent_name)}'\n")
-    for i, f in enumerate(files, start=1):
-        # path looks like '/some/dir/name.ext' — show only the basename
-        basename = f.get("path", "").rsplit("/", 1)[-1] or f.get("path", "")
-        print(f"  {i:>3}.  [{_human_size(f.get('bytes', 0)):>9}]  {_strip_ansi(basename)}")
-    print(
-        "\nSelect files to debrid:\n"
-        "  - Press Enter or type 'all' for every file\n"
-        "  - Single: 2\n"
-        "  - List:   1,3,5\n"
-        "  - Range:  1-10\n"
-        "  - Mix:    1,3-5,10\n"
-        "  - 'c' to cancel\n"
-    )
-    while True:
-        text = input("> ")
-        parsed = _rd_parse_selection(text, total)
-        if parsed == "cancel":
-            return "cancel"
-        if parsed is None:
-            print("Invalid selection, try again.")
-            continue
-        # Map 1-indexed display positions → RD's own file IDs.
-        ids = [str(files[i - 1]["id"]) for i in parsed]
-        return ",".join(ids)
-
-
 def _rd_dispatch(links, action):
-    """Silent variant of `_rd_apply_action` for the TUI's RD worker.
+    """URL-scheme-validated dispatch of RD direct links via the configured action.
 
-    Same URL-scheme allowlist (defence against hostile / MITM'd RD responses
-    sneaking `file://`, `javascript:`, etc. links through), same per-action
-    behaviour (clipboard / print / browser / Downie), but never prints — the
-    TUI surfaces success and warnings via toasts instead. Returns a single
-    user-facing summary string. Raises `_RdError` if no usable links remain
-    after filtering.
+    Defends against hostile / MITM'd RD responses sneaking `file://`,
+    `javascript:`, etc. links through by allowlisting `https://` only.
+    Per-action behaviour: clipboard / print / browser / Downie. Never
+    prints — the TUI surfaces outcome via toasts. Returns a single
+    user-facing summary string. Raises `_RdError` if no usable links
+    remain after filtering.
     """
     safe = [link for link in links if urllib.parse.urlparse(link).scheme == "https"]
     skipped = len(links) - len(safe)
@@ -375,128 +272,3 @@ def _rd_dispatch(links, action):
         if i < n - 1:
             time.sleep(0.2)
     return f"Real-Debrid: {n} link(s) sent via {action}{suffix}"
-
-
-def _rd_apply_action(links, action):
-    # Defense against a hostile or MITM'd RD response: only accept https:// direct
-    # links. A file://, javascript:, tel:, or custom-scheme URL would otherwise
-    # reach the user's browser or Downie unchecked.
-    safe = []
-    for link in links:
-        if urllib.parse.urlparse(link).scheme == "https":
-            safe.append(link)
-        else:
-            scheme = urllib.parse.urlparse(link).scheme or "(none)"
-            print(f"Skipping link with unexpected scheme '{scheme}'.")
-    if not safe:
-        print("No usable direct links from Real-Debrid.")
-        return
-    links = safe
-
-    if action == "clipboard":
-        if len(links) == 1:
-            pyperclip.copy(links[0])
-            print("Direct link copied to clipboard!")
-        else:
-            pyperclip.copy("\n".join(links))
-            print(f"{len(links)} direct links copied to clipboard (newline-separated).")
-        return
-    if action == "print":
-        print("\n".join(links))
-        return
-    for i, link in enumerate(links):
-        if action == "browser":
-            webbrowser.open(link)
-        elif action == "downie":
-            webbrowser.open("downie://XUL/?url=" + urllib.parse.quote(link, safe=""))
-        if i < len(links) - 1:
-            time.sleep(0.2)
-
-
-def _cmd_rd(entry):
-    config = _load_config()
-    token = _resolve_rd_token(config)
-    if not token:
-        print(
-            f"Real-Debrid token not configured. Set RD_TOKEN env var or add "
-            f"[real_debrid].token to {_config_path()}. "
-            f"Get a token at https://real-debrid.com/apitoken."
-        )
-        return
-
-    action = _resolve_rd_action(config)
-
-    info_hash = _rd_parse_hash(entry.get("magnet", ""))
-    if info_hash is None:
-        print("Couldn't parse info-hash from magnet.")
-        return
-
-    try:
-        # Cache check is informational only — RD has been disabling instantAvailability
-        # per-account since ~2024 (returns error_code 37, which _rd_check_cached
-        # swallows and returns False). Both paths converge below: addMagnet → peek
-        # info → picker-or-skip → select → info → unrestrict → dispatch. Users with
-        # a working cache endpoint just see a nicer "Cached..." message.
-        cached = _rd_check_cached(info_hash, token=token)
-        print("Cached on Real-Debrid. Fetching direct link..." if cached else "Submitting to Real-Debrid...")
-
-        torrent_id = _rd_add_magnet(entry["magnet"], token=token)
-
-        # Peek info. RD de-dupes the same magnet to a consistent torrent id on
-        # re-runs, so `selected == 1` below lets us skip the redundant picker.
-        info = _rd_get_info(torrent_id, token=token)
-        files = info.get("files") or []
-
-        if not files:
-            # Magnet hasn't been resolved into file metadata yet — transient state
-            # during `magnet_conversion`. Re-running rd<n> in a moment usually works.
-            print(
-                "Real-Debrid is still resolving the magnet (no files listed yet). "
-                "Run the rd command again in a moment."
-            )
-            return
-
-        # Re-run case: if any file is already selected, we've been through this
-        # torrent before. Per RD docs selectFiles is immutable (returns 202 on
-        # repeat). Skip the picker + selectFiles call entirely.
-        already_selected = any(f.get("selected") == 1 for f in files)
-        if already_selected:
-            print("Torrent was already submitted. Using prior file selection.")
-        else:
-            if len(files) == 1:
-                selection = "all"
-            else:
-                torrent_name = entry.get("name", info.get("filename", "this torrent"))
-                selection = _rd_prompt_file_selection(files, torrent_name=torrent_name)
-                if selection == "cancel":
-                    print("Cancelled. Torrent not debrided.")
-                    return
-            _rd_select_files(torrent_id, selection, token=token)
-            info = _rd_get_info(torrent_id, token=token)
-
-        bad_statuses = ("error", "magnet_error", "virus", "dead")
-        status = info.get("status")
-        if status in bad_statuses:
-            print(f"Real-Debrid marked the torrent as {status}. Try a different source.")
-            return
-
-        links = info.get("links") or []
-        if not links:
-            # RD hasn't populated the hoster links yet. For cached content this
-            # finishes in ~1-2s; uncached content may take longer depending on swarm.
-            # Either way, re-running rd<n> after a moment progresses the flow.
-            print(
-                f"Real-Debrid hasn't finished processing yet (status: {status}). "
-                f"Run the rd command again in a moment."
-            )
-            return
-
-        direct_links = [_rd_unrestrict(link, token=token) for link in links]
-        _rd_apply_action(direct_links, action)
-
-    except _RdError as e:
-        print(str(e))
-    except (KeyError, TypeError) as e:
-        # Defence against unexpected RD response shapes (missing 'id' / 'download' / etc.)
-        # or API version drift. Print a friendly message instead of crashing the REPL.
-        print(f"Unexpected Real-Debrid response shape ({type(e).__name__}). Try again.")
