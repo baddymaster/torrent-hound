@@ -16,9 +16,6 @@ from torrent_hound.config import (
 from torrent_hound.sources import searchAllSites
 from torrent_hound.ui import printResultsQuietly
 
-defaultQuery = 'ubuntu'
-
-
 try:
     from importlib.metadata import version as _pkg_version
     __version__ = _pkg_version("torrent-hound")

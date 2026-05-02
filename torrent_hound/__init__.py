@@ -64,7 +64,7 @@ from .cache import (  # noqa: F401
     _normalize_query,
     _print_cache_feedback,
 )
-from .cli import _build_parser, defaultQuery, main  # noqa: F401
+from .cli import _build_parser, main  # noqa: F401
 from .config import (  # noqa: F401
     _RD_ACTION_DESCRIPTIONS,
     _RD_VALID_ACTIONS,

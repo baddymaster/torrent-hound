@@ -43,10 +43,7 @@ _SOURCES = [
 ]
 
 
-_DEFAULT_QUERY = 'ubuntu'
-
-
-def searchAllSites(query=None, force_search=False, quiet_mode=False, progress_callback=None):
+def searchAllSites(query='', force_search=False, quiet_mode=False, progress_callback=None):
     """Fan out across registered sources, with cache + fallback.
 
     `progress_callback`, if provided, is `callable(source_name, event)` where
@@ -70,9 +67,6 @@ def searchAllSites(query=None, force_search=False, quiet_mode=False, progress_ca
     Sources emit start / mirror_* / ok / empty / failed; searchAllSites
     emits `cached` for cache hits.
     """
-    if query is None:
-        query = _DEFAULT_QUERY
-
     def _emit(name, event):
         if progress_callback is not None:
             progress_callback(name, event)

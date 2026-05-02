@@ -21,8 +21,6 @@ from torrent_hound.ui import colored
 
 from .base import removeAndReplaceSpaces
 
-_DEFAULT_QUERY = 'ubuntu'
-
 
 def extract_magnet_link_1337x(url):
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
@@ -35,10 +33,7 @@ def extract_magnet_link_1337x(url):
         return None
 
 
-def search1337x(search_string=None, domain='1337x.to', quiet_mode=False, limit=10, progress=None):  # noqa: ARG001  — keyword reserved for the source-trail callback; dormant source doesn't emit yet
-    if search_string is None:
-        search_string = _DEFAULT_QUERY
-
+def search1337x(search_string='', domain='1337x.to', quiet_mode=False, limit=10, progress=None):  # noqa: ARG001  — keyword reserved for the source-trail callback; dormant source doesn't emit yet
     query = removeAndReplaceSpaces(search_string)
     page_no = 1
     baseURL = f'https://{domain}'

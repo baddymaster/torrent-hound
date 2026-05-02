@@ -10,8 +10,6 @@ from torrent_hound.ui import colored
 
 from .base import _extract_release_tags, _fmt_date, _fmt_runtime, _normalise_codec, removeAndReplaceSpaces
 
-_DEFAULT_QUERY = 'ubuntu'
-
 # `Movie.Title.2024.1080p` or `Movie Title (2024) [...]` — pull the
 # rightmost plausible release year. Capped at 2030 so titles whose name
 # contains a far-future year (e.g. `Blade Runner 2049`, `2001: A Space
@@ -82,16 +80,13 @@ def _parse_tpb_html(html, domain='thepiratebay.zone', limit=10):
     return parsed
 
 
-def searchPirateBayCondensed(search_string=None, quiet_mode=False, limit=10, timeout=8, progress=None):
+def searchPirateBayCondensed(search_string='', quiet_mode=False, limit=10, timeout=8, progress=None):
     """Search TPB, trying known mirrors in order until one returns results.
     On success, remembers the working domain for subsequent calls in this run.
 
     `progress`, if provided, receives `mirror_attempt`/`mirror_failed`/`ok`/
     `failed` events for the TUI's source-trail display.
     """
-    if search_string is None:
-        search_string = _DEFAULT_QUERY
-
     # Try last-known-good domain first, then the rest
     domains_to_try = [state.tpb_working_domain] + [d for d in TPB_DOMAINS if d != state.tpb_working_domain]
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.0; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0'}
