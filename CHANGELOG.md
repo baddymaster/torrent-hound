@@ -7,6 +7,16 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.2.3] - 2026-05-02
+
+- Decoupling footer selection from display — selection still ranks by priority, but display now sorts alphabetically by keystroke (with ↑↓ move pinned first, /,? last) so the on-screen order is stable across widths
+- Switching responsive footer from per-tier to per-hint inclusion — each hint is independently considered in priority order, so a single tier-4 command surfaces as soon as there's space for it instead of waiting for the whole tier
+- Reordering Tier 4 footer hints — rd first (most useful for RD users), then m magnet, then cs seedr last
+- Renaming v footer hint to 'view' and making the RESULTS footer responsive — tier-priority selection drops niche/row-action hints when the terminal is narrower than the full 139-col legend, instead of silently truncating mid-word
+- Capping apibay wait at 4s instead of the source 8s default — caps the worst-case TPB latency when apibay is flaky and we have to fall through to the HTML mirror chain
+- Gating metadata-worker writes to shared state on entry-identity check — A's stale error/loading no longer clobbers B's panel when the user navigates between rows mid-fetch
+- Adding pre-commit config (ruff --fix + pytest) so the next big rewrite can't ship the kind of two-round-trip ruff misses we hit this session
+
 ## [3.2.2] - 2026-05-02
 
 - Stripping private (_-prefixed) metadata keys from --json / --quiet output — _apibay_id and _yts_movie_id are TUI-internal routing hints and shouldn't leak into the scriptable interface
