@@ -1325,6 +1325,16 @@ def _kick_off_metadata_fetch(state: _AppState, entry: dict) -> threading.Thread 
     state.metadata_view_error = None
 
     def _worker() -> None:
+        # The shared `state.metadata_view_*` fields are scoped to whichever
+        # entry is currently in view. If the user dismissed the panel or
+        # opened a different row's panel before this worker finished, the
+        # globally-shared error / loading state belongs to that other entry
+        # and we mustn't clobber it. Per-entry md mutations (the merge of
+        # fetched fields, _lazy_fetched, _lazy_fetching cleanup) always run
+        # because they live on this entry's metadata dict.
+        def _is_current() -> bool:
+            return state.metadata_view_entry is entry
+
         try:
             if source == "TPB":
                 # Apibay-sourced rows carry _apibay_id and route to the
@@ -1341,10 +1351,11 @@ def _kick_off_metadata_fetch(state: _AppState, entry: dict) -> threading.Thread 
                 yts_id = md.get("_yts_movie_id")
                 fetched = _fetch_yts_movie_details(yts_id) if yts_id else {}
             if not fetched:
-                state.metadata_view_error = (
-                    f"Couldn't fetch detail page from {source}. "
-                    f"Press v again to retry."
-                )
+                if _is_current():
+                    state.metadata_view_error = (
+                        f"Couldn't fetch detail page from {source}. "
+                        f"Press v again to retry."
+                    )
             else:
                 md.update(fetched)
                 md["_lazy_fetched"] = True
@@ -1354,13 +1365,15 @@ def _kick_off_metadata_fetch(state: _AppState, entry: dict) -> threading.Thread 
             # and no error, leaving the user staring at an unexplained
             # half-state. Surface a generic retry message; `_lazy_fetched`
             # stays unset so pressing v again retries the fetch.
-            state.metadata_view_error = (
-                f"Detail fetch from {source} failed ({type(e).__name__}). "
-                f"Press v again to retry."
-            )
+            if _is_current():
+                state.metadata_view_error = (
+                    f"Detail fetch from {source} failed ({type(e).__name__}). "
+                    f"Press v again to retry."
+                )
         finally:
             md.pop("_lazy_fetching", None)
-            state.metadata_view_loading = False
+            if _is_current():
+                state.metadata_view_loading = False
 
     thread = threading.Thread(target=_worker, daemon=True)
     thread.start()

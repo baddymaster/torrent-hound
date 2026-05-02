@@ -911,6 +911,7 @@ def test_kick_off_metadata_fetch_tpb_writes_back_on_success(reset_state):
     from torrent_hound.tui import _kick_off_metadata_fetch
     entry = {"source": "TPB", "link": "https://example/torrent/1", "metadata": {}}
     state = _AppState()
+    state.metadata_view_entry = entry  # what the `v` dispatch sets before kickoff
     with patch("torrent_hound.tui._fetch_tpb_metadata",
                return_value={"uploader": "alice", "files": 3}):
         thread = _kick_off_metadata_fetch(state, entry)
@@ -985,12 +986,103 @@ def test_kick_off_metadata_fetch_sets_error_on_empty_response(reset_state):
     from torrent_hound.tui import _kick_off_metadata_fetch
     entry = {"source": "TPB", "link": "x", "metadata": {}}
     state = _AppState()
+    state.metadata_view_entry = entry  # what the `v` dispatch sets before kickoff
     with patch("torrent_hound.tui._fetch_tpb_metadata", return_value={}):
         thread = _kick_off_metadata_fetch(state, entry)
     thread.join(timeout=2.0)
     assert state.metadata_view_error is not None
     assert "_lazy_fetched" not in entry["metadata"]
     assert "_lazy_fetching" not in entry["metadata"]
+
+
+def test_metadata_worker_does_not_clobber_error_after_user_moves_to_other_entry(reset_state):
+    """Race: user opens entry A's panel, navigates to B before A's worker
+    finishes. A's worker (returning empty / would set error) must NOT write
+    its 'couldn't fetch' message to state.metadata_view_error — the user is
+    looking at B and would see A's error overlaid on B's panel."""
+    from torrent_hound.tui import _kick_off_metadata_fetch
+
+    fetch_can_proceed = threading.Event()
+
+    def slow_empty_fetch(detail_url):
+        fetch_can_proceed.wait(timeout=3)
+        return {}  # empty → triggers the "couldn't fetch" error path
+
+    entry_a = {"source": "TPB", "link": "https://x/a", "metadata": {}}
+    entry_b = {"source": "TPB", "link": "https://x/b", "metadata": {}}
+    state = _AppState()
+    state.metadata_view_entry = entry_a
+
+    with patch("torrent_hound.tui._fetch_tpb_metadata", side_effect=slow_empty_fetch):
+        thread = _kick_off_metadata_fetch(state, entry_a)
+        # User navigates to B before A's worker resolves
+        state.metadata_view_entry = entry_b
+        state.metadata_view_error = None  # B starts with a clean panel
+        fetch_can_proceed.set()
+        thread.join(timeout=3)
+
+    # A's worker finished but must NOT have written its empty-fetch error
+    # onto B's panel state.
+    assert state.metadata_view_error is None
+    # A's per-entry _lazy_fetching flag still gets cleared (entry-scoped state)
+    assert "_lazy_fetching" not in entry_a["metadata"]
+
+
+def test_metadata_worker_exception_does_not_clobber_after_user_moves(reset_state):
+    """Same identity check on the exception path: an unhandled fetch
+    exception in A's worker must not surface as an error toast on B's panel."""
+    from torrent_hound.tui import _kick_off_metadata_fetch
+
+    fetch_can_proceed = threading.Event()
+
+    def slow_raising_fetch(detail_url):
+        fetch_can_proceed.wait(timeout=3)
+        raise AttributeError("simulated parser crash")
+
+    entry_a = {"source": "TPB", "link": "https://x/a", "metadata": {}}
+    entry_b = {"source": "TPB", "link": "https://x/b", "metadata": {}}
+    state = _AppState()
+    state.metadata_view_entry = entry_a
+
+    with patch("torrent_hound.tui._fetch_tpb_metadata", side_effect=slow_raising_fetch):
+        thread = _kick_off_metadata_fetch(state, entry_a)
+        state.metadata_view_entry = entry_b
+        state.metadata_view_error = None
+        fetch_can_proceed.set()
+        thread.join(timeout=3)
+
+    assert state.metadata_view_error is None
+    assert "_lazy_fetching" not in entry_a["metadata"]
+
+
+def test_metadata_worker_does_not_clear_loading_after_user_moves(reset_state):
+    """If the user moves to a different entry whose own worker is still
+    in flight, the original entry's worker must not flip
+    state.metadata_view_loading to False — that field belongs to whoever
+    is currently in view."""
+    from torrent_hound.tui import _kick_off_metadata_fetch
+
+    fetch_can_proceed = threading.Event()
+
+    def slow_fetch(detail_url):
+        fetch_can_proceed.wait(timeout=3)
+        return {"director": "x"}
+
+    entry_a = {"source": "TPB", "link": "https://x/a", "metadata": {}}
+    entry_b = {"source": "TPB", "link": "https://x/b", "metadata": {}}
+    state = _AppState()
+    state.metadata_view_entry = entry_a
+
+    with patch("torrent_hound.tui._fetch_tpb_metadata", side_effect=slow_fetch):
+        thread = _kick_off_metadata_fetch(state, entry_a)
+        # Simulate B's worker setting loading=True (as if its own kickoff ran)
+        state.metadata_view_entry = entry_b
+        state.metadata_view_loading = True
+        fetch_can_proceed.set()
+        thread.join(timeout=3)
+
+    # A's finally must not have set loading=False — B's worker manages that
+    assert state.metadata_view_loading is True
 
 
 def test_kick_off_metadata_fetch_handles_unexpected_exception(reset_state):
@@ -1000,6 +1092,7 @@ def test_kick_off_metadata_fetch_handles_unexpected_exception(reset_state):
     from torrent_hound.tui import _kick_off_metadata_fetch
     entry = {"source": "TPB", "link": "x", "metadata": {}}
     state = _AppState()
+    state.metadata_view_entry = entry  # what the `v` dispatch sets before kickoff
     with patch("torrent_hound.tui._fetch_tpb_metadata",
                side_effect=AttributeError("simulated parser crash")):
         thread = _kick_off_metadata_fetch(state, entry)
