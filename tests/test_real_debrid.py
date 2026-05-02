@@ -160,6 +160,31 @@ def test_rd_request_500(th):
     assert "500" in str(exc.value)
 
 
+@pytest.mark.parametrize("redirect_code", [301, 302, 303, 307, 308])
+def test_rd_request_3xx_refused_without_following(th, redirect_code):
+    """RD's API never legitimately redirects; following a 3xx silently could
+    leak the bearer token. _rd_request must refuse and raise loudly. Also
+    verify the underlying call passed allow_redirects=False so the request
+    layer never followed before we got the response back."""
+    resp = _mk_response(redirect_code, headers={"Location": "https://malicious.example/x"})
+    with patch.object(th.requests, "request", return_value=resp) as m_req:
+        with pytest.raises(th._RdError) as exc:
+            th._rd_request("GET", "/x", token="t")
+    assert "redirect" in str(exc.value).lower()
+    assert str(redirect_code) in str(exc.value)
+    # The single request must have been made with redirects disabled
+    assert m_req.call_args.kwargs.get("allow_redirects") is False
+
+
+def test_rd_request_passes_allow_redirects_false_on_happy_path(th):
+    """Defence in depth: even successful requests must opt out of automatic
+    redirect-following so we never accidentally regress this in a refactor."""
+    resp = _mk_response(200, json_body={"ok": True})
+    with patch.object(th.requests, "request", return_value=resp) as m_req:
+        th._rd_request("GET", "/x", token="t")
+    assert m_req.call_args.kwargs.get("allow_redirects") is False
+
+
 # --- error_code mapping (per RD docs) ------------------------------------
 
 @pytest.mark.parametrize("err_code,expected_substring", [

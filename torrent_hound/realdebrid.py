@@ -109,13 +109,19 @@ def _rd_request(method, path, token, data=None):
     HTTP 429 error and will count in the limit (bruteforcing will leave you
     blocked for undefined amount of time)" — so no exponential backoff, no
     multi-retry. One free retry, then bail.
+
+    Redirects are explicitly disabled. RD's API is single-host and never
+    redirects under normal operation; following a 3xx silently could leak
+    the bearer token (the Authorization header) to a redirected URL or
+    quietly mask a DNS hijack / MITM. Any 3xx surfaces as an _RdError so
+    the abnormality is visible.
     """
     url = _RD_API + path
     headers = {"Authorization": f"Bearer {token}"}
 
     for attempt in (1, 2):
         try:
-            resp = requests.request(method, url, headers=headers, data=data, timeout=3)
+            resp = requests.request(method, url, headers=headers, data=data, timeout=3, allow_redirects=False)
         except requests.Timeout:
             raise _RdError("Real-Debrid timed out. Try again in a moment.") from None
         except requests.ConnectionError as e:
@@ -155,6 +161,16 @@ def _rd_request(method, path, token, data=None):
                 "Real-Debrid returned a non-JSON response. Likely a captive portal "
                 "or proxy; check your connection."
             ) from None
+    # 3xx — we explicitly disabled redirect-following because RD's API never
+    # legitimately redirects. A 3xx here suggests DNS hijack, MITM, or a captive
+    # portal injecting a redirect; surface it loudly rather than silently following
+    # and potentially leaking the bearer token to a redirected URL.
+    if 300 <= s < 400:
+        raise _RdError(
+            f"Real-Debrid returned an unexpected redirect ({s}). This may "
+            f"indicate DNS hijack, MITM, or a captive portal — refusing to "
+            f"follow rather than risk leaking your token."
+        )
     # CDN/proxy 403 first — body is HTML not JSON, so error_code parsing won't help
     if s == 403 and _rd_has_cdn_markers(resp.headers):
         raise _RdError(
