@@ -33,6 +33,13 @@ _YEAR_RE = re.compile(r'\b(19\d{2}|20[0-2]\d|2030)\b')
 APIBAY_HOST = 'apibay.org'
 APIBAY_URL = f'https://{APIBAY_HOST}'
 
+# Apibay normally responds in 100-500ms when reachable; cap waiting at 4s
+# rather than the source-level 8s default so a transient apibay slowdown
+# doesn't stack on top of the (already lengthy) HTML mirror chain budget.
+# When apibay is healthy users never see this. When apibay is broken,
+# users get to the HTML fallback ~4s sooner.
+APIBAY_TIMEOUT = 4
+
 # Tracker set extracted verbatim from the TPB SPA's `print_trackers()`
 # function. Embedded in client-built magnets so newly-added swarms can
 # discover peers without DHT bootstrap delay.
@@ -323,7 +330,7 @@ def searchPirateBayCondensed(search_string='', quiet_mode=False, limit=10, timeo
     `progress`, if provided, receives `mirror_attempt`/`mirror_failed`/
     `ok`/`empty`/`failed` events for the TUI's source-trail display.
     """
-    api_results = _search_apibay(search_string, limit=limit, timeout=timeout, progress=progress)
+    api_results = _search_apibay(search_string, limit=limit, timeout=APIBAY_TIMEOUT, progress=progress)
     if api_results is not None:
         # apibay responded — definitive (success or genuine empty); don't
         # probe HTML mirrors. Same logic as the per-mirror empty case.

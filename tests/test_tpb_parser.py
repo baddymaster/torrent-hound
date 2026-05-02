@@ -248,6 +248,31 @@ def test_search_apibay_emits_empty_event_on_no_results_sentinel(th):
     assert any(e["type"] == "empty" for e in events)
 
 
+def test_searchpiratebay_caps_apibay_timeout_below_source_default(th, apibay_ubuntu_json):
+    """Apibay's worst-case wait must be shorter than the source-level timeout
+    so a flaky apibay can't stack 8s of waiting on top of the HTML mirror
+    chain. The orchestrator passes APIBAY_TIMEOUT explicitly rather than
+    leaning on `_search_apibay`'s default."""
+    from unittest.mock import MagicMock, patch
+    assert th.sources.tpb.APIBAY_TIMEOUT < 8
+
+    fake_resp = MagicMock()
+    fake_resp.json.return_value = apibay_ubuntu_json
+    fake_resp.status_code = 200
+    fake_resp.headers = {}
+    seen_kwargs = []
+
+    def capture(url, **kwargs):
+        seen_kwargs.append(kwargs)
+        return fake_resp
+
+    with patch.object(th.sources.tpb, "_https_get", side_effect=capture):
+        th.searchPirateBayCondensed("ubuntu", quiet_mode=True)
+    # The first https call is to apibay; verify it ran with the shorter cap
+    assert seen_kwargs
+    assert seen_kwargs[0].get("timeout") == th.sources.tpb.APIBAY_TIMEOUT
+
+
 def test_search_apibay_returns_none_on_network_error(th):
     """On a RequestException we return None so the caller falls back to
     HTML mirrors. We also emit `mirror_failed` so the trail counts the
