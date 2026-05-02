@@ -131,3 +131,32 @@ def test_mixed_hit_miss_only_fetches_missed_source(th, mock_sources):
     assert mock_sources["YTS"].call_count == 1
     assert mock_sources["EZTV"].call_count == 1
     assert th.state.results_tpb_condensed[0]["name"] == "cached-tpb"
+
+
+def test_source_exception_does_not_tank_orchestrator(th, monkeypatch):
+    """If one source raises an unhandled exception, the orchestrator must
+    survive: surviving sources' results reach the user, state.results gets
+    populated, and the broken source emits a synthetic `failed` terminal
+    event so the TUI's source-trail spinner settles instead of staying
+    visually mid-flight forever."""
+    tpb_mock = MagicMock(side_effect=AttributeError("simulated parser crash"))
+    yts_mock = MagicMock(return_value=[{"name": "yts-result", "size": "500M"}])
+    eztv_mock = MagicMock(return_value=[{"name": "eztv-result", "size": "200M"}])
+    monkeypatch.setattr(th.sources, "_SOURCES", [
+        ("TPB", tpb_mock),
+        ("YTS", yts_mock),
+        ("EZTV", eztv_mock),
+    ])
+
+    events: list = []
+    def capture(name, event):
+        events.append((name, event["type"]))
+
+    th.searchAllSites("anything", quiet_mode=True, progress_callback=capture)
+
+    assert th.state.results_yts and th.state.results_yts[0]["name"] == "yts-result"
+    assert th.state.results_eztv and th.state.results_eztv[0]["name"] == "eztv-result"
+    assert th.state.results_tpb_condensed == []
+    assert th.state.results  # flat list populated, not None
+    tpb_event_types = [t for n, t in events if n == "TPB"]
+    assert "failed" in tpb_event_types

@@ -120,14 +120,25 @@ def searchAllSites(query='', force_search=False, quiet_mode=False, progress_call
 
         with ThreadPoolExecutor(max_workers=max(1, len(misses))) as pool:
             started = {name: time.monotonic() for name, _ in misses}
+            progresses = {name: _per_source_progress(name, started[name]) for name, _ in misses}
             for name, _ in misses:
                 _emit(name, {"type": "start"})
             futures = {
-                name: pool.submit(fn, query, quiet_mode, progress=_per_source_progress(name, started[name]))
+                name: pool.submit(fn, query, quiet_mode, progress=progresses[name])
                 for name, fn in misses
             }
             for name, fut in futures.items():
-                result = fut.result() or []
+                try:
+                    result = fut.result() or []
+                except Exception:
+                    # Source worker raised an unhandled exception. Without
+                    # this catch the orchestrator dies, leaving state.results
+                    # unset and the failed source's trail entry stuck
+                    # mid-flight (in_flight=True, no terminal event). Synthesise
+                    # `failed` so the spinner settles, and continue so the
+                    # surviving sources' results still reach the user.
+                    progresses[name]({"type": "failed"})
+                    result = []
                 source_results[name] = result
                 _cache_put(query, name, result)
 
