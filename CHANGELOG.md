@@ -7,6 +7,18 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.2.1] - 2026-05-02
+
+- Adding fall-through Exception catch to _rd_worker so unexpected errors still clear rd_flow and toast instead of wedging the TUI in RD_WAITING
+- Catching unexpected exceptions in _kick_off_metadata_fetch worker — surface a retry message instead of leaving the panel in a half-state
+- Forcing https on TPB result links and YTS API-only-host links so an http URL from a source can't leak through to the user
+- Catching source-worker exceptions in searchAllSites — synthesise failed event so the trail spinner settles + surviving sources still reach the user
+- Retiring _cmd_rd legacy orchestrator and the helpers it pulled along (_rd_check_cached, _rd_prompt_file_selection, _rd_parse_selection, _rd_apply_action) plus their tests — TUI _rd_worker is the only RD path now
+- Adding _rd_worker tests for empty-links / _RdError / KeyError / TypeError defences before retiring _cmd_rd
+- Removing unreachable _DEFAULT_QUERY constants and the cli defaultQuery export
+- Refreshing EZTV mirror chain to match eztvstatus.org — dropping eztv.re, adding eztv.tf and eztv.yt
+- Correcting stale config.py comment about RD helpers — they live in realdebrid.py, not the monolith
+
 ## [3.2.0] - 2026-05-01
 
 - Capping year regex at 2030 + halting director/stars block at next heading + DDP.X.Y full match + sentinel subtitle filter
