@@ -1132,7 +1132,6 @@ def render_toast(state: _AppState) -> Text:
 # adapts to the screen the user is on rather than dumping a static legend.
 _FOOTER_HINTS = {
     LOADING:    "q quit",
-    RESULTS:    "↑↓ move · ⏎/c copy · cs seedr · m magnet · v metadata · o open · d download · r repeat · rd real-debrid · s search · / filter · ? help · q quit",
     FILTER:     "type to narrow · enter accept · esc cancel",
     SEARCH:     "type query · enter search · esc cancel",
     MAGNET_VIEW: "any key to return to results · q quit",
@@ -1141,6 +1140,47 @@ _FOOTER_HINTS = {
     RD_WAITING: "⏳ Real-Debrid working · q quit",
     HELP:       "any key to dismiss · q quit",
 }
+
+# RESULTS-mode footer is responsive: each hint has a priority tier (1 = most
+# important, 4 = niche). At render time we include the largest tier-prefix
+# that fits in the terminal width — so a narrow window keeps the essentials
+# (nav + copy + help + quit) and drops less-important hints (rd / m / cs)
+# rather than character-truncating mid-word.
+#
+# Order in this list is the on-screen display order; tier governs whether
+# a hint is shown at a given width.
+_RESULTS_FOOTER_TIERS = [
+    (1, "↑↓ move"),         # essential nav
+    (1, "⏎/c copy"),         # primary action
+    (4, "cs seedr"),         # niche
+    (4, "m magnet"),         # niche
+    (3, "v view"),           # row action
+    (3, "o open"),           # row action
+    (3, "d download"),       # row action
+    (2, "r repeat"),         # workflow
+    (4, "rd real-debrid"),   # power-user
+    (2, "s search"),         # workflow
+    (2, "/ filter"),         # workflow
+    (1, "? help"),           # escape hatch — always show so user can find what's hidden
+    (1, "q quit"),           # always show
+]
+
+
+def _select_results_footer(width: int) -> str:
+    """Return the joined hint string for the largest tier-prefix that fits
+    in `width` columns. Tier 1 is always returned even if it overflows
+    (rich will then clip at the right edge — a degraded view but better
+    than going below 'always show quit')."""
+    accumulated: list[str] = []
+    for max_tier in (1, 2, 3, 4):
+        candidate = [text for tier, text in _RESULTS_FOOTER_TIERS if tier <= max_tier]
+        if len(" · ".join(candidate)) > width:
+            break
+        accumulated = candidate
+    if not accumulated:
+        accumulated = [text for tier, text in _RESULTS_FOOTER_TIERS if tier == 1]
+    return " · ".join(accumulated)
+
 
 # Footer overrides while a chord prefix is pending. Surfacing the available
 # extensions immediately makes the chord-timeout window feel like a deliberate
@@ -1154,6 +1194,8 @@ _CHORD_FOOTER_HINTS = {
 def render_footer(state: _AppState) -> Text:
     if state.chord_buffer in _CHORD_FOOTER_HINTS:
         return Text(_CHORD_FOOTER_HINTS[state.chord_buffer], style=PALETTE["accent"])
+    if state.mode == RESULTS:
+        return Text(_select_results_footer(_console.size.width), style=PALETTE["metadata"])
     return Text(_FOOTER_HINTS.get(state.mode, ""), style=PALETTE["metadata"])
 
 

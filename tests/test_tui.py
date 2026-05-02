@@ -843,6 +843,86 @@ def test_name_column_budget_clamps_to_minimum_for_narrow_terminals():
         assert _name_column_budget() == 20  # clamped to minimum
 
 
+# ── responsive RESULTS-mode footer ─────────────────────────────────────
+
+def test_results_footer_full_when_terminal_is_wide():
+    from torrent_hound.tui import _select_results_footer
+    text = _select_results_footer(200)
+    # All four tiers visible at 200 cols
+    for hint in ("↑↓ move", "⏎/c copy", "cs seedr", "m magnet", "v view",
+                 "o open", "d download", "r repeat", "rd real-debrid",
+                 "s search", "/ filter", "? help", "q quit"):
+        assert hint in text
+
+
+def test_results_footer_drops_tier_4_at_medium_width():
+    """At ~100 cols the niche hints (cs/m/rd) disappear, common row
+    actions stay."""
+    from torrent_hound.tui import _select_results_footer
+    text = _select_results_footer(120)
+    assert "cs seedr" not in text
+    assert "m magnet" not in text
+    assert "rd real-debrid" not in text
+    # Tier 1-3 still present
+    assert "v view" in text
+    assert "o open" in text
+    assert "d download" in text
+    assert "/ filter" in text
+
+
+def test_results_footer_drops_to_tier_2_at_narrow_width():
+    """At ~80 cols the row-action tier (v/o/d) collapses too — only
+    nav + workflow + help/quit remain."""
+    from torrent_hound.tui import _select_results_footer
+    text = _select_results_footer(80)
+    assert "v view" not in text
+    assert "o open" not in text
+    assert "d download" not in text
+    # Tier 1-2 still present
+    assert "↑↓ move" in text
+    assert "⏎/c copy" in text
+    assert "s search" in text
+    assert "r repeat" in text
+    assert "? help" in text
+    assert "q quit" in text
+
+
+def test_results_footer_essentials_only_at_very_narrow_width():
+    """Below the tier-2 budget, only the essentials remain — nav, copy,
+    help, quit. Help is in the essentials so the user can always find
+    what's been hidden."""
+    from torrent_hound.tui import _select_results_footer
+    text = _select_results_footer(50)
+    assert "↑↓ move" in text
+    assert "⏎/c copy" in text
+    assert "? help" in text
+    assert "q quit" in text
+    # Not present
+    assert "s search" not in text
+    assert "v view" not in text
+
+
+def test_results_footer_returns_tier_1_even_when_too_narrow():
+    """Width too narrow even for tier 1 — return tier 1 anyway and let
+    rich clip on render. Better to show the start of the most-important
+    hints than nothing at all."""
+    from torrent_hound.tui import _select_results_footer
+    text = _select_results_footer(10)
+    # Tier 1 hints should still be in the output (rich will clip the right edge)
+    assert "↑↓ move" in text
+    assert "q quit" in text
+
+
+def test_results_footer_preserves_display_order():
+    """Even when tiers are partially included, the on-screen left-to-right
+    order matches the original full footer — users see hints in the same
+    visual position regardless of how wide their terminal is."""
+    from torrent_hound.tui import _select_results_footer
+    text = _select_results_footer(200)
+    # Spot-check ordering: cs comes before v which comes before s
+    assert text.index("cs seedr") < text.index("v view") < text.index("s search")
+
+
 def test_render_table_truncates_overlong_name_with_ellipsis(reset_state):
     """A torrent name longer than the dynamic budget must be truncated
     in-place with an ellipsis, never passed full-length to rich. This is
