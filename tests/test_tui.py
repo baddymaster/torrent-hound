@@ -855,36 +855,63 @@ def test_results_footer_full_when_terminal_is_wide():
         assert hint in text
 
 
-def test_results_footer_drops_tier_4_at_medium_width():
-    """At ~100 cols the niche hints (cs/m/rd) disappear, common row
-    actions stay."""
+def test_results_footer_drops_lowest_tier_4_first():
+    """At a width that fits all of tier 1+2+3 plus rd and m but not cs,
+    cs is the only tier-4 hint dropped — within-tier ordering is rd > m > cs."""
+    from torrent_hound.tui import _select_results_footer
+    text = _select_results_footer(130)
+    assert "rd real-debrid" in text
+    assert "m magnet" in text
+    assert "cs seedr" not in text
+
+
+def test_results_footer_keeps_only_rd_when_others_dont_fit():
+    """At a width that fits rd but not m or cs, rd is the lone tier-4
+    hint shown — priority within the tier respects user-specified order."""
     from torrent_hound.tui import _select_results_footer
     text = _select_results_footer(120)
-    assert "cs seedr" not in text
+    assert "rd real-debrid" in text
     assert "m magnet" not in text
+    assert "cs seedr" not in text
+
+
+def test_results_footer_substitutes_shorter_hint_when_priority_doesnt_fit():
+    """Granular per-hint inclusion: when rd (14 chars) doesn't fit the
+    remaining budget but m (8 chars) does, m takes the slot. The user
+    asked for individual commands to surface as space allows — not for
+    the whole tier-4 block to gate on its longest member."""
+    from torrent_hound.tui import _select_results_footer
+    # 116 cols: tier 1+2+3 use 100; remaining 16 is too small for rd
+    # (needs 17 with separator) but fits m (needs 11 with separator).
+    text = _select_results_footer(116)
+    assert "m magnet" in text
     assert "rd real-debrid" not in text
-    # Tier 1-3 still present
+    assert "cs seedr" not in text
+
+
+def test_results_footer_drops_all_tier_4_when_no_room():
+    """At exactly the tier-3 boundary (100 cols), tier 1+2+3 fit perfectly
+    and no tier-4 hint can squeeze in."""
+    from torrent_hound.tui import _select_results_footer
+    text = _select_results_footer(100)
+    assert "rd real-debrid" not in text
+    assert "m magnet" not in text
+    assert "cs seedr" not in text
+    # Tier 3 still fully present
     assert "v view" in text
     assert "o open" in text
     assert "d download" in text
-    assert "/ filter" in text
 
 
-def test_results_footer_drops_to_tier_2_at_narrow_width():
-    """At ~80 cols the row-action tier (v/o/d) collapses too — only
-    nav + workflow + help/quit remain."""
+def test_results_footer_drops_tier_3_individually_too():
+    """Same per-hint logic applies within tier 3: at a width where v view
+    (6 chars) fits but d download (10 chars) doesn't, v shows alone."""
     from torrent_hound.tui import _select_results_footer
+    # Tier 1+2 = 69 cols. At 80, slack is 11 — enough for v view (9 with
+    # separator) but not d download (13 with separator).
     text = _select_results_footer(80)
-    assert "v view" not in text
-    assert "o open" not in text
+    assert "v view" in text
     assert "d download" not in text
-    # Tier 1-2 still present
-    assert "↑↓ move" in text
-    assert "⏎/c copy" in text
-    assert "s search" in text
-    assert "r repeat" in text
-    assert "? help" in text
-    assert "q quit" in text
 
 
 def test_results_footer_essentials_only_at_very_narrow_width():
@@ -892,39 +919,40 @@ def test_results_footer_essentials_only_at_very_narrow_width():
     help, quit. Help is in the essentials so the user can always find
     what's been hidden."""
     from torrent_hound.tui import _select_results_footer
-    text = _select_results_footer(50)
+    text = _select_results_footer(40)
     assert "↑↓ move" in text
     assert "⏎/c copy" in text
     assert "? help" in text
     assert "q quit" in text
-    # Not present
     assert "s search" not in text
     assert "v view" not in text
 
 
-def test_results_footer_returns_tier_1_even_when_too_narrow():
-    """Width too narrow even for tier 1 — return tier 1 anyway and let
-    rich clip on render. Better to show the start of the most-important
-    hints than nothing at all."""
+def test_results_footer_returns_tier_1_when_nothing_fits():
+    """If even ↑↓ move (the highest-priority hint) doesn't fit, fall back
+    to the full tier-1 set and let rich clip on render — better to show
+    the start of the essentials than blank."""
     from torrent_hound.tui import _select_results_footer
-    text = _select_results_footer(10)
-    # Tier 1 hints should still be in the output (rich will clip the right edge)
-    assert "↑↓ move" in text
-    assert "q quit" in text
+    text = _select_results_footer(3)
+    # Tier 1 fallback kicks in
+    for hint in ("↑↓ move", "⏎/c copy", "? help", "q quit"):
+        assert hint in text
 
 
-def test_results_footer_preserves_display_order():
-    """Even when tiers are partially included, the on-screen left-to-right
-    order matches the canonical layout. Tier-4 hints render in priority
-    order (rd → m → cs) — rd is most useful for users who have RD
-    configured, cs the most niche."""
+def test_results_footer_preserves_display_order_under_partial_inclusion():
+    """When tiers are partially included, the on-screen left-to-right
+    order still matches the canonical layout. rd appears in its slot
+    (between ⏎/c copy and v view) regardless of whether m or cs are also
+    visible."""
     from torrent_hound.tui import _select_results_footer
-    text = _select_results_footer(200)
-    # Tier-4 hints in user-specified order
-    assert text.index("rd real-debrid") < text.index("m magnet") < text.index("cs seedr")
-    # rd appears early; cs is pushed past the row-action and workflow tiers
-    assert text.index("rd real-debrid") < text.index("v view")
-    assert text.index("v view") < text.index("cs seedr")
+    full = _select_results_footer(200)
+    assert full.index("rd real-debrid") < full.index("m magnet") < full.index("cs seedr")
+    assert full.index("rd real-debrid") < full.index("v view")
+    assert full.index("v view") < full.index("cs seedr")
+    # Even with partial tier-4 inclusion (e.g. only rd), rd stays in slot
+    partial = _select_results_footer(120)
+    assert partial.index("⏎/c copy") < partial.index("rd real-debrid")
+    assert partial.index("rd real-debrid") < partial.index("v view")
 
 
 def test_render_table_truncates_overlong_name_with_ellipsis(reset_state):
