@@ -939,20 +939,54 @@ def test_results_footer_returns_tier_1_when_nothing_fits():
         assert hint in text
 
 
-def test_results_footer_preserves_display_order_under_partial_inclusion():
-    """When tiers are partially included, the on-screen left-to-right
-    order still matches the canonical layout. rd appears in its slot
-    (between ⏎/c copy and v view) regardless of whether m or cs are also
-    visible."""
+def test_results_footer_full_layout_is_alphabetical():
+    """Display order (after the pinned `↑↓ move`) is alphabetical by the
+    keystroke's alphabetic chars — `⏎/c copy` sorts as `c`, `cs seedr` as
+    `cs`, etc. Non-alphabetic keystrokes (`/`, `?`) sort last."""
     from torrent_hound.tui import _select_results_footer
     full = _select_results_footer(200)
-    assert full.index("rd real-debrid") < full.index("m magnet") < full.index("cs seedr")
-    assert full.index("rd real-debrid") < full.index("v view")
-    assert full.index("v view") < full.index("cs seedr")
-    # Even with partial tier-4 inclusion (e.g. only rd), rd stays in slot
-    partial = _select_results_footer(120)
-    assert partial.index("⏎/c copy") < partial.index("rd real-debrid")
-    assert partial.index("rd real-debrid") < partial.index("v view")
+    items = full.split(" · ")
+    assert items == [
+        "↑↓ move",
+        "⏎/c copy",
+        "cs seedr",
+        "d download",
+        "m magnet",
+        "o open",
+        "q quit",
+        "r repeat",
+        "rd real-debrid",
+        "s search",
+        "v view",
+        "/ filter",
+        "? help",
+    ]
+
+
+def test_results_footer_partial_layout_stays_alphabetical():
+    """Selection still happens by priority (tier ASC, position ASC) — but
+    once the selected set is known, display order is alphabetical. So
+    when the substitution case kicks in (m slips into rd's slot at 116
+    cols), m still renders in its alphabetical position, not at rd's
+    spot."""
+    from torrent_hound.tui import _select_results_footer
+    text = _select_results_footer(116)
+    items = text.split(" · ")
+    # m magnet is included (substitution); rd / cs are not
+    assert "m magnet" in items
+    assert "rd real-debrid" not in items
+    assert "cs seedr" not in items
+    # And the surviving items render in alpha order
+    assert items.index("⏎/c copy") < items.index("d download") < items.index("m magnet")
+    assert items.index("v view") < items.index("/ filter") < items.index("? help")
+
+
+def test_results_footer_pinned_move_stays_first_at_all_widths():
+    """↑↓ move is pinned to position 0 regardless of width or selection."""
+    from torrent_hound.tui import _select_results_footer
+    for width in (200, 130, 100, 80, 40):
+        text = _select_results_footer(width)
+        assert text.startswith("↑↓ move"), f"width {width}: {text!r}"
 
 
 def test_render_table_truncates_overlong_name_with_ellipsis(reset_state):

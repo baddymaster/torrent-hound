@@ -1166,29 +1166,45 @@ _RESULTS_FOOTER_TIERS = [
 ]
 
 
+def _alpha_display_key(text: str) -> tuple:
+    """Sort key for the on-screen footer order.
+
+    `↑↓ move` is pinned first. Everything else sorts alphabetically by
+    the alphabetic characters of the keystroke (so `⏎/c copy` sorts as
+    `c`, `cs seedr` as `cs`, etc.). Keystrokes with no alphabetic char
+    (`/` filter, `?` help) sort last in their own group.
+    """
+    if text.startswith("↑↓"):
+        return (0, "")
+    keystroke = text.split(" ", 1)[0]
+    alpha = "".join(ch for ch in keystroke if ch.isalpha())
+    if alpha:
+        return (1, alpha)
+    return (2, keystroke)
+
+
 def _select_results_footer(width: int) -> str:
     """Return the joined hint string that fits in `width` columns.
 
-    Inclusion is per-hint, not per-tier: each hint is independently
-    considered in priority order (tier ASC, position-within-list ASC) and
-    included if it fits in the remaining space. So if there's room for
-    'rd real-debrid' but not 'm magnet' / 'cs seedr', rd shows up alone
-    without waiting for the whole tier-4 block to fit. If the
-    highest-priority hint doesn't fit but a shorter lower-priority one
-    does, the shorter one slips in.
+    Selection is per-hint (not per-tier): each hint is independently
+    considered in priority order (tier ASC, position-within-list ASC)
+    and included if it fits in the remaining space. So a single tier-4
+    command surfaces as soon as there's room, rather than waiting for
+    the whole tier-4 block to fit. If the highest-priority hint doesn't
+    fit but a shorter lower-priority one does, the shorter one slips in.
 
-    Within a tier the list-order doubles as the inclusion priority — so
-    rd is preferred over m which is preferred over cs (matching the
-    user-specified tier-4 order). The chosen hints render in the original
-    display order, not priority order, so on-screen positions stay stable.
+    Display is alphabetical via `_alpha_display_key` — selection decides
+    *which* hints render, alpha sort decides *where* on the line. So on
+    a narrow terminal users see the same alphabetical arrangement they'd
+    see on a wide one, just with fewer entries.
 
     Tier-1 fallback: when even the most-preferred hint doesn't fit
     (extremely narrow terminal), fall back to the tier-1 set so rich can
     clip at the right edge — a degraded view, but better than blank.
     """
     indexed = list(enumerate(_RESULTS_FOOTER_TIERS))
-    # Priority ordering: tier first (lower = higher priority), then list
-    # position (earlier = higher priority within the tier).
+    # Priority ordering for inclusion only: tier first (lower = higher
+    # priority), then list position (earlier = higher priority within tier).
     by_priority = sorted(indexed, key=lambda e: (e[1][0], e[0]))
 
     selected: set[int] = set()
@@ -1203,9 +1219,8 @@ def _select_results_footer(width: int) -> str:
     if not selected:
         selected = {idx for idx, (tier, _) in indexed if tier == 1}
 
-    # Render in original display order — the on-screen positions don't
-    # shuffle just because some hints are missing.
-    return " · ".join(text for idx, (_tier, text) in indexed if idx in selected)
+    selected_hints = [text for idx, (_tier, text) in indexed if idx in selected]
+    return " · ".join(sorted(selected_hints, key=_alpha_display_key))
 
 
 # Footer overrides while a chord prefix is pending. Surfacing the available
