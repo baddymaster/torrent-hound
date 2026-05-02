@@ -1334,6 +1334,16 @@ def _kick_off_metadata_fetch(state: _AppState, entry: dict) -> threading.Thread 
             else:
                 md.update(fetched)
                 md["_lazy_fetched"] = True
+        except Exception as e:
+            # Defensive: an unhandled exception from the parser or HTTP
+            # layer would otherwise let the panel render with no spinner
+            # and no error, leaving the user staring at an unexplained
+            # half-state. Surface a generic retry message; `_lazy_fetched`
+            # stays unset so pressing v again retries the fetch.
+            state.metadata_view_error = (
+                f"Detail fetch from {source} failed ({type(e).__name__}). "
+                f"Press v again to retry."
+            )
         finally:
             md.pop("_lazy_fetching", None)
             state.metadata_view_loading = False

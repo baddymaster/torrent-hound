@@ -938,6 +938,24 @@ def test_kick_off_metadata_fetch_sets_error_on_empty_response(reset_state):
     assert "_lazy_fetching" not in entry["metadata"]
 
 
+def test_kick_off_metadata_fetch_handles_unexpected_exception(reset_state):
+    """If the fetcher raises an unhandled exception, the worker must not
+    leave the panel in a half-state — loading flag clears, an error
+    message surfaces, and `_lazy_fetched` stays unset so retry works."""
+    from torrent_hound.tui import _kick_off_metadata_fetch
+    entry = {"source": "TPB", "link": "x", "metadata": {}}
+    state = _AppState()
+    with patch("torrent_hound.tui._fetch_tpb_metadata",
+               side_effect=AttributeError("simulated parser crash")):
+        thread = _kick_off_metadata_fetch(state, entry)
+    thread.join(timeout=2.0)
+    assert state.metadata_view_loading is False
+    assert state.metadata_view_error is not None
+    assert "AttributeError" in state.metadata_view_error
+    assert "_lazy_fetched" not in entry["metadata"]
+    assert "_lazy_fetching" not in entry["metadata"]
+
+
 def test_metadata_view_q_quits(reset_state):
     state = _AppState(mode=METADATA_VIEW)
     assert handle_key(state, "q") is False
