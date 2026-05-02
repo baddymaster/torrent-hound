@@ -55,7 +55,13 @@ def _parse_tpb_html(html, domain='thepiratebay.zone', limit=10):
         try:
             link_name = tds[1].find("a", {"class": "detLink"})
             href = link_name["href"]
-            link = href if href.startswith("http") else f"{base}{href}"
+            if href.startswith("http"):
+                # Force https on absolute URLs — some mirrors emit http:// in
+                # the search-row href even though the page itself was served
+                # over https. Avoid leaking the user onto an http connection.
+                link = re.sub(r'^http://', 'https://', href, count=1)
+            else:
+                link = f"{base}{href}"
             res = {
                 'name': link_name.contents[0].strip(),
                 'link': link,

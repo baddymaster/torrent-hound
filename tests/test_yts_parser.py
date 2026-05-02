@@ -102,6 +102,31 @@ def test_parse_yts_json_does_rewrite_url_when_served_by_mirror(th, yts_interstel
         assert "yts.bz" in r["link"], f"expected link rewritten to yts.bz: {r['link']}"
 
 
+def test_parse_yts_json_forces_https_when_api_host_returns_http(th):
+    """API-only-host path used to leave the API's returned URL untouched —
+    so an http:// URL from YTS would leak through. Now we force https on
+    the scheme even when keeping the host."""
+    data = {
+        "data": {
+            "movies": [{
+                "title_long": "Some Movie (2024)",
+                "url": "http://yts.bz/movies/some-movie-2024",
+                "year": 2024,
+                "torrents": [{
+                    "hash": "0" * 40, "quality": "1080p", "seeds": 5, "peers": 1,
+                    "size": "1.5 GB",
+                }],
+            }]
+        }
+    }
+    results = th._parse_yts_json(data, domain="movies-api.accel.li", limit=5)
+    assert results
+    for r in results:
+        assert r["link"].startswith("https://"), r["link"]
+        assert "yts.bz" in r["link"]  # host preserved
+        assert "http://" not in r["link"]
+
+
 def test_parse_yts_json_quality_filter_drops_other_variants(th, yts_interstellar_json):
     # Without filter: every quality variant for every movie.
     all_results = th._parse_yts_json(yts_interstellar_json, limit=50)

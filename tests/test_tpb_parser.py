@@ -96,3 +96,29 @@ def test_build_results_table_strips_wide_unicode(th):
     cleaned = re.sub(r'[^\x20-\x7E]', '', name_with_emoji)
     assert "⭐" not in cleaned
     assert "YG" in cleaned
+
+
+def test_parse_tpb_html_forces_https_on_absolute_http_links(th):
+    """If TPB emits an absolute http:// href in the search row, the parser
+    must rewrite it to https:// so we never hand the user an http link."""
+    html = b"""
+    <html><body>
+      <table id="searchResult">
+        <tr><th>x</th></tr>
+        <tr>
+          <td><a class="iconLeft" href="/browse/200">cat</a></td>
+          <td>
+            <a class="detLink" href="http://thepiratebay.zone/torrent/123/foo">foo</a>
+            <a href="magnet:?xt=urn:btih:abcd"><img alt="Magnet link" /></a>
+            <font>Uploaded 01-01 20:00, Size 1.0&nbsp;MiB, ULed by anon</font>
+          </td>
+          <td>10</td><td>2</td>
+        </tr>
+      </table>
+    </body></html>
+    """
+    rows = th._parse_tpb_html(html, domain="thepiratebay.zone", limit=10)
+    assert rows, "fixture should yield at least one row"
+    assert rows[0]["link"].startswith("https://")
+    assert "http://" not in rows[0]["link"]
+    assert "thepiratebay.zone/torrent/123/foo" in rows[0]["link"]

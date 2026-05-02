@@ -100,9 +100,14 @@ def _parse_yts_json(data, domain='yts.mx', limit=10, quality_filter=None):
         # Rewrite the link to use the responding mirror, except for API-only
         # hosts (movies-api.accel.li) which don't serve movie pages — for those
         # we trust the API's returned URL (already a real yts.bz/movies/... page).
+        # Either branch enforces https so an http URL from the API can't leak
+        # through to the browser.
         movie_url = movie.get("url", "")
-        if movie_url and domain not in _YTS_API_ONLY_HOSTS:
-            movie_url = re.sub(r'https?://[^/]+', f'https://{domain}', movie_url)
+        if movie_url:
+            if domain in _YTS_API_ONLY_HOSTS:
+                movie_url = re.sub(r'^http://', 'https://', movie_url, count=1)
+            else:
+                movie_url = re.sub(r'https?://[^/]+', f'https://{domain}', movie_url)
         for torrent in movie.get("torrents", []):
             if quality_filter and torrent.get('quality') != quality_filter:
                 continue
