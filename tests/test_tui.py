@@ -787,6 +787,21 @@ def test_rd_worker_keyerror_surfaces_friendly_message(reset_state):
     assert "KeyError" in state.toast
 
 
+def test_rd_worker_unexpected_exception_clears_flow(reset_state):
+    """Anything outside _RdError / KeyError / TypeError (e.g. AttributeError
+    from an exotic response shape) must still clear rd_flow and toast — a
+    naked exception would otherwise leave the TUI wedged in RD_WAITING."""
+    state = _AppState(mode=RD_WAITING)
+    state.rd_flow = _RDFlow()
+    with patch("torrent_hound.tui._rd_add_magnet",
+               side_effect=AttributeError("simulated crash")):
+        _rd_worker(state, _entry(), token="tok", action="clipboard")
+    assert state.rd_flow is None
+    assert state.mode == RESULTS
+    assert "Real-Debrid flow crashed" in state.toast
+    assert "AttributeError" in state.toast
+
+
 def test_rd_worker_typeerror_surfaces_friendly_message(reset_state):
     """TypeError from an unexpected response shape (e.g. None where a dict was
     expected) — same defensive catch as KeyError."""

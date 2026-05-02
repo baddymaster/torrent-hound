@@ -1296,6 +1296,11 @@ def _rd_worker(state: _AppState, entry: dict, token: str, action: str) -> None:
         _finish(str(e))
     except (KeyError, TypeError) as e:
         _finish(f"Unexpected Real-Debrid response shape ({type(e).__name__}). Try again.")
+    except Exception as e:
+        # Defence in depth: anything else (network library updates surfacing
+        # new exception types, our own bug, etc.) must still clear rd_flow
+        # and toast — otherwise the TUI sticks in RD_WAITING forever.
+        _finish(f"Real-Debrid flow crashed ({type(e).__name__}). Try again.")
 
 
 def _kick_off_metadata_fetch(state: _AppState, entry: dict) -> threading.Thread | None:
