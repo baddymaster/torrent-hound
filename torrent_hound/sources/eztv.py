@@ -9,7 +9,7 @@ from torrent_hound.ui import colored
 
 from .base import _extract_release_tags, _fmt_date, _format_bytes
 
-EZTV_DOMAINS = ['eztvx.to', 'eztv.re', 'eztv.wf', 'eztv.it']
+EZTV_DOMAINS = ['eztvx.to', 'eztv.wf', 'eztv.tf', 'eztv.yt', 'eztv.it']
 
 
 def _parse_episode_query(query):
