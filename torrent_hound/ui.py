@@ -91,6 +91,25 @@ def printTopResults():
     prettyPrintCombinedTopResults()
 
 
+def _public_view(result):
+    """Return a copy of a result dict with private (`_`-prefixed) metadata
+    keys stripped — those are TUI-internal routing hints (`_apibay_id`,
+    `_yts_movie_id`, `_lazy_fetched`, `_lazy_fetching`) and shouldn't
+    appear in the scriptable `--json` / `--quiet` interface. Returns
+    `result` unchanged if no filtering is needed."""
+    if not isinstance(result, dict):
+        return result
+    md = result.get('metadata')
+    if not isinstance(md, dict):
+        return result
+    cleaned = {k: v for k, v in md.items() if not k.startswith('_')}
+    if cleaned == md:
+        return result
+    out = dict(result)
+    out['metadata'] = cleaned
+    return out
+
+
 def convertListJSONToPureJSON(result_list):
     # Sample JSON Structure
     # {
@@ -105,7 +124,7 @@ def convertListJSONToPureJSON(result_list):
         rj_results = result_json['results']
 
         for _ in result_list:
-            rj_results[str(index)] = result_list[index]
+            rj_results[str(index)] = _public_view(result_list[index])
             index += 1
         result_json['count'] = str(index)
 
