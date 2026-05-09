@@ -84,13 +84,20 @@ def _https_get(url, *, headers=None, timeout=8, max_redirects=10):
     """`requests.get` that follows redirects without ever downgrading to
     plaintext.
 
-    Initial URL must be `https://`. Any `http://` in a Location header is
-    rewritten to `https://` before following — defends against servers
-    whose redirect chains transit port 80 (TPB does this: an https request
-    gets a 302 with `Location: http://...` which then 301s back to https,
-    landing one round-trip on plaintext if `requests`'s default
-    follow-anything-anywhere behaviour is used). Other non-https schemes
-    (`file://`, `ftp://`, etc.) raise `InvalidURL`.
+    Initial URL must be `https://`. The redirect policy is:
+
+    * Same-host `http://` → rewritten to `https://` before following.
+      This is the documented TPB case: an https request gets a 302 with
+      `Location: http://thepiratebay.org/...` which then 301s back to
+      https, landing one round-trip on plaintext if `requests`'s default
+      follow-anything-anywhere behaviour is used.
+    * Cross-host `http://` → refused. A hostile or MITM'd mirror could
+      otherwise redirect us at any host of its choosing; the unconditional
+      rewrite that earlier versions performed silently widened the
+      redirect target set instead of restricting it.
+    * `https://` (any host) → followed unchanged. Cross-host https hops
+      are legitimate (e.g. `yts.lt` → `yts.bz`).
+    * Anything else (`file://`, `ftp://`, …) → `InvalidURL`.
 
     Otherwise behaves like `requests.get(allow_redirects=True)` —
     `RequestException` subclasses surface unchanged for callers that
@@ -107,6 +114,12 @@ def _https_get(url, *, headers=None, timeout=8, max_redirects=10):
         if r.status_code in (301, 302, 303, 307, 308) and r.headers.get("Location"):
             loc = _urllib_parse.urljoin(url, r.headers["Location"])
             if loc.startswith("http://"):
+                current_host = _urllib_parse.urlparse(url).hostname
+                target_host = _urllib_parse.urlparse(loc).hostname
+                if current_host != target_host:
+                    raise _requests.exceptions.InvalidURL(
+                        f"refusing cross-host http redirect: {loc}"
+                    )
                 loc = "https://" + loc[len("http://"):]
             elif not loc.startswith("https://"):
                 raise _requests.exceptions.InvalidURL(
