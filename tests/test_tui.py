@@ -1429,3 +1429,196 @@ def test_kick_off_rd_no_token_toasts_and_returns_none(reset_state):
     assert state.rd_flow is None
     assert state.mode == RESULTS
     assert "configure-rd" in state.toast or "RD_TOKEN" in state.toast
+
+
+# ── security: URL scheme allowlist on entry actions ───────────────────
+#
+# `entry["link"]` and `entry["magnet"]` come from third-party HTTP
+# responses. `webbrowser.open` dispatches via xdg-open / `open` /
+# os.startfile, all of which happily resolve arbitrary URI schemes
+# against the user's registered handlers. The action helpers must
+# refuse anything that isn't `https://` (page link) or `magnet:?` (magnet).
+
+def _bad_link_entry(scheme):
+    return {
+        "name": "evil",
+        "magnet": "magnet:?xt=urn:btih:" + ("0" * 40),
+        "link": f"{scheme}//attacker.example/x",
+        "source": "TPB",
+        "size": "1 GB", "seeders": 1, "leechers": 1, "ratio": "1.0",
+    }
+
+
+def _bad_magnet_entry(magnet_value):
+    return {
+        "name": "evil",
+        "magnet": magnet_value,
+        "link": "https://example.test/x",
+        "source": "TPB",
+        "size": "1 GB", "seeders": 1, "leechers": 1, "ratio": "1.0",
+    }
+
+
+@pytest.mark.parametrize("scheme", ["http:", "javascript:", "file:", "ftp:", "data:"])
+def test_action_open_page_refuses_non_https_link(reset_state, scheme):
+    """Pressing `o` on a row whose link is not https:// must surface a
+    refusal toast and never call webbrowser.open."""
+    from torrent_hound.tui import _action_open_page
+    entry = _bad_link_entry(scheme)
+    with patch("torrent_hound.tui.webbrowser.open") as m_open:
+        msg = _action_open_page(entry)
+    m_open.assert_not_called()
+    assert "Refused" in msg
+
+
+def test_action_open_page_allows_https_link(reset_state):
+    from torrent_hound.tui import _action_open_page
+    entry = {"link": "https://example.test/torrent/1"}
+    with patch("torrent_hound.tui.webbrowser.open") as m_open:
+        _action_open_page(entry)
+    m_open.assert_called_once_with("https://example.test/torrent/1", new=2)
+
+
+@pytest.mark.parametrize("magnet", [
+    "file:///etc/passwd",
+    "javascript:alert(1)",
+    "https://attacker.example/x",
+    "slack://team/x",
+    "",
+    None,
+])
+def test_action_send_to_client_refuses_non_magnet(reset_state, magnet):
+    """Pressing `d` on a row whose `magnet` field isn't a real magnet:?
+    URI must refuse — `webbrowser.open` would otherwise dispatch the URI
+    to whatever handler the OS has registered for that scheme."""
+    from torrent_hound.tui import _action_send_to_client
+    entry = _bad_magnet_entry(magnet)
+    with patch("torrent_hound.tui.webbrowser.open") as m_open:
+        msg = _action_send_to_client(entry)
+    m_open.assert_not_called()
+    assert "Refused" in msg
+
+
+def test_action_send_to_client_allows_magnet(reset_state):
+    from torrent_hound.tui import _action_send_to_client
+    magnet = "magnet:?xt=urn:btih:" + ("a" * 40)
+    with patch("torrent_hound.tui.webbrowser.open") as m_open:
+        _action_send_to_client({"magnet": magnet})
+    m_open.assert_called_once_with(magnet, new=2)
+
+
+@pytest.mark.parametrize("magnet", [
+    "file:///etc/passwd",
+    "javascript:alert(1)",
+    "https://attacker.example/x",
+    "",
+])
+def test_action_copy_refuses_non_magnet(reset_state, magnet):
+    """Defence in depth — refuse to copy non-magnet content to the clipboard
+    so the user can't paste a hostile URI into their torrent client."""
+    from torrent_hound.tui import _action_copy
+    with patch("torrent_hound.tui.pyperclip.copy") as m_copy:
+        msg = _action_copy({"magnet": magnet})
+    m_copy.assert_not_called()
+    assert "Refused" in msg
+
+
+def test_action_copy_allows_magnet(reset_state):
+    from torrent_hound.tui import _action_copy
+    magnet = "magnet:?xt=urn:btih:" + ("b" * 40)
+    with patch("torrent_hound.tui.pyperclip.copy") as m_copy:
+        msg = _action_copy({"magnet": magnet})
+    m_copy.assert_called_once_with(magnet)
+    assert "copied" in msg.lower()
+
+
+def test_action_seedr_refuses_non_magnet(reset_state):
+    from torrent_hound.tui import _action_seedr
+    with patch("torrent_hound.tui.pyperclip.copy") as m_copy, \
+         patch("torrent_hound.tui.webbrowser.open") as m_open:
+        msg = _action_seedr({"magnet": "javascript:alert(1)"})
+    m_copy.assert_not_called()
+    m_open.assert_not_called()
+    assert "Refused" in msg
+
+
+def test_action_seedr_allows_magnet(reset_state):
+    from torrent_hound.tui import _action_seedr
+    magnet = "magnet:?xt=urn:btih:" + ("c" * 40)
+    with patch("torrent_hound.tui.pyperclip.copy") as m_copy, \
+         patch("torrent_hound.tui.webbrowser.open") as m_open:
+        _action_seedr({"magnet": magnet})
+    m_copy.assert_called_once_with(magnet)
+    m_open.assert_called_once_with("https://www.seedr.cc", new=2)
+
+
+# ── security: ANSI/control char stripping in render boundaries ────────
+#
+# Names, magnets, and free-form metadata fields come from third-party
+# scrapes. `rich.text.Text(plain)` does not escape ESC sequences, so a
+# hostile uploader could repaint header chrome around the rendered cell.
+
+def test_selected_info_line_strips_ansi_from_name(reset_state):
+    """`selected: <source> · <name>` must not pass through ANSI escapes
+    that an uploader put in the torrent name."""
+    from rich.console import Console
+
+    from torrent_hound.tui import _selected_info_line
+    state_module.results = [{
+        "name": "clean\x1b[2J\x1b[Hpwn",
+        "source": "TPB",
+        "magnet": "magnet:?xt=urn:btih:" + ("0" * 40),
+        "link": "https://x.test/1",
+        "size": "1 GB", "seeders": 1, "leechers": 1, "ratio": "1.0",
+    }]
+    state = _AppState(mode=RESULTS, selected_idx=0)
+    line = _selected_info_line(state)
+    buf = Console(record=True, width=200, height=4)
+    buf.print(line)
+    raw = buf.export_text(styles=False)
+    assert "\x1b" not in raw
+    assert "cleanpwn" in raw
+
+
+def test_render_magnet_panel_strips_ansi_from_magnet_text(reset_state):
+    from rich.console import Console
+
+    from torrent_hound.tui import render_magnet_panel
+    state = _AppState(
+        mode=MAGNET_VIEW,
+        magnet_view_text="magnet:?xt=urn:btih:abc&dn=\x1b[31mevil\x1b[0m",
+        magnet_view_name="title \x1b[2Jspoof",
+    )
+    panel = render_magnet_panel(state)
+    buf = Console(record=True, width=120, height=20)
+    buf.print(panel)
+    raw = buf.export_text(styles=False)
+    assert "\x1b" not in raw
+
+
+def test_render_metadata_panel_strips_ansi_from_summary_and_misc(reset_state):
+    """Free-form metadata strings (summary, misc values, uploader, …) must
+    pass through `_strip_ansi` before rich gets a chance to render them
+    verbatim."""
+    from rich.console import Console
+
+    from torrent_hound.tui import render_metadata_panel
+    entry = {
+        "source": "TPB",
+        "size": "1 GB", "seeders": 1, "leechers": 1, "link": "x",
+        "metadata": {
+            "name": "x",
+            "uploader": "evil\x1b[31m_uploader\x1b[0m",
+            "summary": "before\x1b[2J\x1b[Happaren­tly clean",
+            "misc": {
+                "key\x1b[1m": "val\x1b[2Jue",
+            },
+        },
+    }
+    state = _AppState(mode=METADATA_VIEW, metadata_view_entry=entry)
+    panel = render_metadata_panel(state)
+    buf = Console(record=True, width=160, height=40)
+    buf.print(panel)
+    raw = buf.export_text(styles=False)
+    assert "\x1b" not in raw
+    assert "evil_uploader" in raw

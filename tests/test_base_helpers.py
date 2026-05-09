@@ -221,3 +221,42 @@ def test_https_get_detects_redirect_loop(th):
     with patch("torrent_hound.sources.base._requests.get", side_effect=fake_get):
         with pytest.raises(requests.TooManyRedirects):
             th.sources.base._https_get("https://example.com/a")
+
+
+def test_https_get_refuses_cross_host_http_redirect(th):
+    """A mirror redirecting `Location: http://attacker.example/...` must
+    NOT be silently rewritten to `https://attacker.example/...` — the
+    earlier unconditional rewrite let a hostile mirror redirect us at
+    any host of its choosing. Same-host http→https rewrite is the only
+    documented use case (TPB) and is allowed by a separate test."""
+    from unittest.mock import patch
+
+    import pytest
+    import requests
+
+    def fake_get(url, **kwargs):
+        return _mk_resp(302, location="http://attacker.example/landing")
+
+    with patch("torrent_hound.sources.base._requests.get", side_effect=fake_get):
+        with pytest.raises(requests.exceptions.InvalidURL, match="cross-host"):
+            th.sources.base._https_get("https://thepiratebay.org/start")
+
+
+def test_https_get_allows_cross_host_https_redirect(th):
+    """Cross-host hops over https are legitimate (yts.lt → yts.bz)."""
+    from unittest.mock import patch
+    seen = []
+
+    def fake_get(url, **kwargs):
+        seen.append(url)
+        if "yts.lt" in url:
+            return _mk_resp(302, location="https://yts.bz/api/v2/list_movies.json")
+        return _mk_resp(200)
+
+    with patch("torrent_hound.sources.base._requests.get", side_effect=fake_get):
+        th.sources.base._https_get("https://yts.lt/api/v2/list_movies.json")
+
+    assert seen == [
+        "https://yts.lt/api/v2/list_movies.json",
+        "https://yts.bz/api/v2/list_movies.json",
+    ]

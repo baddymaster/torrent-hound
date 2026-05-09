@@ -31,6 +31,7 @@ import termios
 import threading
 import time
 import tty
+import urllib.parse
 import webbrowser
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -326,23 +327,57 @@ def read_key() -> str:
 
 # ── action handlers ────────────────────────────────────────────────────
 # Each returns the toast message to surface; rendering is the loop's job.
+#
+# `entry["link"]` and `entry["magnet"]` originate from third-party HTTP
+# responses (HTML scraped from a TPB mirror, JSON from apibay/YTS/EZTV).
+# `webbrowser.open` dispatches via xdg-open / `open` / os.startfile, which
+# happily resolve arbitrary URI schemes against the user's registered
+# handlers — `file://` discloses local files; `javascript:` may execute;
+# vendor URI handlers (Slack, Zoom, ms-search, …) have shipped RCE bugs.
+# The same allowlist pattern that `_rd_dispatch` uses on Real-Debrid
+# direct-download links is applied here on row links and magnets.
+def _is_safe_https_url(s) -> bool:
+    if not isinstance(s, str):
+        return False
+    try:
+        return urllib.parse.urlparse(s).scheme == "https"
+    except ValueError:
+        return False
+
+
+def _is_safe_magnet(s) -> bool:
+    return isinstance(s, str) and s.startswith("magnet:?")
+
+
 def _action_copy(entry) -> str:
-    pyperclip.copy(str(entry["magnet"]))
+    magnet = entry.get("magnet", "")
+    if not _is_safe_magnet(magnet):
+        return "Refused to copy: row magnet is missing or not a magnet: URI"
+    pyperclip.copy(str(magnet))
     return "Magnet copied to clipboard"
 
 
 def _action_open_page(entry) -> str:
-    webbrowser.open(entry["link"], new=2)
+    link = entry.get("link", "")
+    if not _is_safe_https_url(link):
+        return "Refused to open: row link is not an https:// URL"
+    webbrowser.open(link, new=2)
     return "Opened torrent page in browser"
 
 
 def _action_send_to_client(entry) -> str:
-    webbrowser.open(entry["magnet"], new=2)
+    magnet = entry.get("magnet", "")
+    if not _is_safe_magnet(magnet):
+        return "Refused to dispatch: row magnet is missing or not a magnet: URI"
+    webbrowser.open(magnet, new=2)
     return "Magnet sent to default torrent client"
 
 
 def _action_seedr(entry) -> str:
-    pyperclip.copy(str(entry["magnet"]))
+    magnet = entry.get("magnet", "")
+    if not _is_safe_magnet(magnet):
+        return "Refused to copy: row magnet is missing or not a magnet: URI"
+    pyperclip.copy(str(magnet))
     webbrowser.open("https://www.seedr.cc", new=2)
     return "Magnet copied + Seedr opened"
 
@@ -731,7 +766,9 @@ def _selected_info_line(state: _AppState) -> Text:
         return Text("(no row selected)", style=PALETTE["metadata"])
     source = entry.get("source", "?")
     source_style = SOURCE_COLOURS.get(source, PALETTE["headline"])
-    name = entry.get("name", "")
+    # Untrusted: torrent name comes from a third-party scrape and may carry
+    # ANSI escapes that would otherwise rewrite header chrome around it.
+    name = _strip_ansi(entry.get("name", ""))
     return Text.assemble(
         ("selected: ", PALETTE["metadata"]),
         (source, source_style),
@@ -893,8 +930,12 @@ def render_empty_state(state: _AppState) -> Text:
 
 def render_magnet_panel(state: _AppState) -> Panel:
     """Full-magnet overlay shown when the user presses `m`."""
-    body = Text(state.magnet_view_text, style=PALETTE["accent"], overflow="fold")
-    title_name = state.magnet_view_name[:80]
+    # Both fields are untrusted (the dn parameter and the torrent name come
+    # from a third-party scrape; BeautifulSoup decodes &#x1b; entities to a
+    # literal ESC). Strip ANSI/C0 controls before rendering so a hostile
+    # uploader can't repaint the panel chrome.
+    body = Text(_strip_ansi(state.magnet_view_text), style=PALETTE["accent"], overflow="fold")
+    title_name = _strip_ansi(state.magnet_view_name)[:80]
     return Panel(
         body,
         title=Text(f"magnet · {title_name}", style=PALETTE["headline"]),
@@ -981,9 +1022,15 @@ _METADATA_FIELD_ORDER = [
 def _format_metadata_value(key: str, md: dict, entry: dict) -> str:
     """Per-field rendering. `key` matches the canonical order above; some
     keys are synthesised from the entry (size, seed_leech) rather than the
-    metadata dict."""
+    metadata dict.
+
+    Free-form string fields (uploader description, name, summary, …) come
+    from third-party HTTP responses and are stripped of ANSI/C0 controls
+    before being handed to rich, which otherwise renders them verbatim.
+    Numeric / bool / synthesised fields don't need stripping.
+    """
     if key == "size":
-        return entry.get("size") or "—"
+        return _strip_ansi(entry.get("size") or "—")
     if key == "seed_leech":
         s = entry.get("seeders", "?")
         leech = entry.get("leechers", "?")
@@ -992,7 +1039,9 @@ def _format_metadata_value(key: str, md: dict, entry: dict) -> str:
     if val is None or val == "":
         return "—"
     if key == "imdb_code":
-        url = f"https://www.imdb.com/title/{val}/"
+        # imdb_code is matched against `tt\d+` upstream, so ANSI here would be
+        # a parser bug; defending anyway since this string flows into a Text.
+        url = f"https://www.imdb.com/title/{_strip_ansi(str(val))}/"
         rating = md.get("imdb_rating")
         if rating:
             return f"{url} (★ {rating})"
@@ -1001,7 +1050,7 @@ def _format_metadata_value(key: str, md: dict, entry: dict) -> str:
         return "yes" if val else "no"
     if key in ("season", "episode", "files"):
         return str(val)
-    return str(val)
+    return _strip_ansi(str(val))
 
 
 def render_metadata_panel(state: _AppState) -> Panel:
@@ -1023,7 +1072,8 @@ def render_metadata_panel(state: _AppState) -> Panel:
     if summary:
         body_parts.append(Text(""))
         body_parts.append(Text("Summary:", style=PALETTE["headline"]))
-        body_parts.append(Text(summary, overflow="fold"))
+        # Untrusted uploader prose — strip ANSI/C0 controls before rendering.
+        body_parts.append(Text(_strip_ansi(str(summary)), overflow="fold"))
 
     misc = md.get("misc") or {}
     if misc:
@@ -1033,7 +1083,8 @@ def render_metadata_panel(state: _AppState) -> Panel:
         misc_grid.add_column("k", style=PALETTE["metadata"], no_wrap=True)
         misc_grid.add_column("v", overflow="fold")
         for k, v in misc.items():
-            misc_grid.add_row(k, v)
+            # Both keys and values come from uploader-written description text.
+            misc_grid.add_row(_strip_ansi(str(k)), _strip_ansi(str(v)))
         body_parts.append(misc_grid)
 
     if state.metadata_view_error:

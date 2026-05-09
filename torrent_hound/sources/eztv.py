@@ -1,6 +1,7 @@
 """EZTV source: TV shows via IMDB ID bridge, JSON API, episode/quality filtering."""
 
 import re
+import urllib.parse
 
 import requests
 
@@ -61,10 +62,20 @@ def _imdb_lookup_candidates(query, timeout=8, limit=5):
     others. Returns an empty list on any failure (network / non-JSON /
     no tvSeries match).
     """
-    slug = query.strip().replace(' ', '_').lower()
+    # Restrict the slug to `[a-z0-9_]` and percent-encode it before
+    # interpolation: the slug ends up in the URL path between two `/`
+    # segments, so a stray `?` / `&` / `#` / `/` / `..` would either
+    # rewrite the path (path traversal) or sprout a query string. The
+    # IMDB suggestion API ignores diacritics anyway, so lossy
+    # alphanumeric collapse is what users already get.
+    slug = re.sub(r'[^a-z0-9]+', '_', query.lower()).strip('_')
     if not slug:
         return []
-    url = f'https://v2.sg.media-imdb.com/suggestion/{slug[0]}/{slug}.json'
+    url = (
+        f'https://v2.sg.media-imdb.com/suggestion/'
+        f'{urllib.parse.quote(slug[0], safe="")}/'
+        f'{urllib.parse.quote(slug, safe="")}.json'
+    )
     try:
         r = _https_get(url, timeout=timeout)
         out = []
@@ -94,7 +105,14 @@ def _eztv_slug(title):
 
 
 def _parse_eztv_json(torrents, domain='eztvx.to', season=None, episode=None, filters=None, limit=10):
-    """Filter and convert raw EZTV torrent dicts into our standard result format."""
+    """Filter and convert raw EZTV torrent dicts into our standard result format.
+
+    Drops rows whose `magnet_url` doesn't carry a real `magnet:?...` URI —
+    the field is consumed verbatim by the TUI's `c`/`d`/`cs` actions and
+    eventually passed to `webbrowser.open` (default torrent client) or the
+    user's clipboard, so a hostile or compromised mirror can't sneak a
+    `file://` / `javascript:` / vendor-URI scheme through.
+    """
     parsed = []
     for t in torrents:
         # Season / episode filter
@@ -108,6 +126,9 @@ def _parse_eztv_json(torrents, domain='eztvx.to', season=None, episode=None, fil
             title_lower = title.lower()
             if not all(f in title_lower for f in filters):
                 continue
+        magnet = t.get('magnet_url', '')
+        if not (isinstance(magnet, str) and magnet.startswith('magnet:?')):
+            continue
         seeds = t.get('seeds', 0)
         peers = t.get('peers', 0)
         try:
@@ -143,7 +164,7 @@ def _parse_eztv_json(torrents, domain='eztvx.to', season=None, episode=None, fil
             'leechers': peers,
             'size': _format_bytes(size_bytes),
             'ratio': ratio,
-            'magnet': t.get('magnet_url', ''),
+            'magnet': magnet,
             'metadata': metadata,
         })
         if len(parsed) >= limit:

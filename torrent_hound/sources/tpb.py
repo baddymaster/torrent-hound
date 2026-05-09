@@ -89,6 +89,13 @@ def _tpb_page_is_empty_results(html) -> bool:
 # layout parser to identify which td holds the size.
 _SIZE_CELL_RE = re.compile(r'^\d+(?:\.\d+)?\s*[KMGT]i?B$', re.IGNORECASE)
 
+# A BT info-hash is either 40 hex chars (BTIH v1) or 32 base32 chars (BTIH
+# v1 alternate encoding). Validating the apibay-supplied value before
+# splicing it into the magnet URI keeps a hostile or buggy upstream from
+# producing a malformed magnet that the TUI's clipboard / send-to-client
+# actions then hand to the user's torrent client unchanged.
+_INFOHASH_RE = re.compile(r'^([0-9a-fA-F]{40}|[A-Za-z2-7]{32})$')
+
 
 def _parse_tpb_html(html, domain='thepiratebay.zone', limit=10):
     """Parse a TPB search-results HTML document. Returns [] if the expected
@@ -232,6 +239,8 @@ def _parse_apibay_item(item):
     name = (item.get('name') or '').strip()
     item_id = item.get('id') or ''
     if not info_hash or not name or info_hash == '0' * 40 or item_id == '0':
+        return None
+    if not _INFOHASH_RE.match(info_hash):
         return None
     try:
         seeders = int(item.get('seeders', 0))

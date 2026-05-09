@@ -2,6 +2,7 @@
 episode/keyword filtering, domain fallback, and error handling."""
 from unittest.mock import MagicMock, patch
 
+import pytest
 import requests
 
 # ---------------------------------------------------------------------------
@@ -494,3 +495,100 @@ def test_searchEZTV_shows_error_when_all_domains_fail(th, capsys):
         results = th.searchEZTV("severance")
         assert results == []
         assert "unreachable" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Security: M1 — magnet_url scheme allowlist
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("bad_url", [
+    "",
+    "file:///etc/passwd",
+    "javascript:alert(1)",
+    "https://attacker.example/x",
+    "slack://team/x",
+    "magnet-not-really:?xt=...",
+])
+def test_parse_eztv_json_drops_torrents_with_non_magnet_url(th, bad_url):
+    """The TUI's `c`/`d`/`cs` actions hand `entry["magnet"]` to pyperclip
+    or webbrowser.open. A hostile mirror must not be able to ride a
+    `file://` / `javascript:` / vendor-URI into either path via the
+    EZTV JSON's `magnet_url` field."""
+    torrents = [
+        {
+            "id": "1", "title": "evil", "magnet_url": bad_url,
+            "season": "1", "episode": "1",
+            "seeds": 10, "peers": 1, "size_bytes": 1024,
+        },
+    ]
+    assert th._parse_eztv_json(torrents) == []
+
+
+def test_parse_eztv_json_keeps_valid_magnets(th):
+    valid = "magnet:?xt=urn:btih:" + ("a" * 40)
+    torrents = [{
+        "id": "1", "title": "ok", "magnet_url": valid,
+        "season": "1", "episode": "1",
+        "seeds": 10, "peers": 1, "size_bytes": 1024,
+    }]
+    out = th._parse_eztv_json(torrents)
+    assert len(out) == 1 and out[0]["magnet"] == valid
+
+
+def test_parse_eztv_json_drops_when_magnet_url_missing(th):
+    torrents = [{
+        "id": "1", "title": "ok",  # no magnet_url at all
+        "season": "1", "episode": "1",
+        "seeds": 10, "peers": 1, "size_bytes": 1024,
+    }]
+    assert th._parse_eztv_json(torrents) == []
+
+
+# ---------------------------------------------------------------------------
+# Security: M3 — IMDB suggestion slug URL-encoding / sanitisation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("hostile_query, expected_in_path", [
+    ("foo/bar",       "foo_bar"),
+    ("foo?x=y",       "foo_x_y"),
+    ("../../etc",     "etc"),
+    ("a&b#c",         "a_b_c"),
+    ("Test Show!",    "test_show"),
+])
+def test_imdb_lookup_candidates_sanitises_path_metacharacters(th, hostile_query, expected_in_path):
+    """Special URL chars in the user query must not survive to the
+    suggestion API path — `?` would inject a query string, `/` and `..`
+    would rewrite the path, `#` would lop off the fragment server-side."""
+    captured = {}
+
+    def fake_get(url, **kwargs):
+        captured["url"] = url
+        resp = MagicMock()
+        resp.json.return_value = {"d": []}
+        return resp
+
+    with patch.object(th.requests, "get", side_effect=fake_get):
+        th._imdb_lookup_candidates(hostile_query)
+
+    url = captured["url"]
+    # Path is .../suggestion/<first>/<slug>.json — both segments must be
+    # alphanumeric (or percent-encoded) and the slug must contain the
+    # expected sanitised form somewhere in it.
+    assert url.startswith("https://v2.sg.media-imdb.com/suggestion/")
+    # `?` and `&` are valid as URL separators only after the path; the
+    # filename portion (.../<slug>.json) must not contain them. `..` would
+    # be path traversal.
+    path_part = url.split("/suggestion/", 1)[1]
+    for bad in ("?", "&", "#", ".."):
+        assert bad not in path_part, f"hostile char '{bad}' leaked into URL path: {url}"
+    assert expected_in_path in url
+
+
+def test_imdb_lookup_candidates_returns_empty_for_only_punctuation(th):
+    """A query that's nothing but punctuation collapses to an empty slug
+    — we must not hit the API with a degenerate URL."""
+    with patch.object(th.requests, "get") as m_get:
+        assert th._imdb_lookup_candidates("???") == []
+        assert th._imdb_lookup_candidates("/.../") == []
+    m_get.assert_not_called()

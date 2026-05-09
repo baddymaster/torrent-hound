@@ -5,6 +5,8 @@ and breaks parsing, these tests will fail loud instead of the tool silently
 returning 0 results.
 """
 
+import pytest
+
 
 def test_parse_tpb_html_returns_ten_results(th, tpb_ubuntu_html):
     results = th._parse_tpb_html(tpb_ubuntu_html, limit=10)
@@ -420,3 +422,48 @@ def test_parse_tpb_html_forces_https_on_absolute_http_links(th):
     assert rows[0]["link"].startswith("https://")
     assert "http://" not in rows[0]["link"]
     assert "thepiratebay.zone/torrent/123/foo" in rows[0]["link"]
+
+
+# --- Security: L2 — apibay info_hash shape ------------------------------
+
+
+def _apibay_record(info_hash):
+    """Minimal apibay record used by the info-hash validation tests."""
+    return {
+        "id": "1",
+        "name": "test",
+        "info_hash": info_hash,
+        "seeders": "10", "leechers": "1", "size": "1024",
+    }
+
+
+@pytest.mark.parametrize("hostile_hash", [
+    "",                                # empty — already rejected, but pin
+    "0" * 40,                          # all-zero sentinel — already rejected
+    "g" * 40,                          # 40 chars but non-hex (g is not hex)
+    "1" * 32,                          # 32 chars but `1` isn't in base32 alphabet
+    "ABC",                             # too short
+    "a" * 41,                          # too long for hex
+    "magnet:?xt=urn:btih:abc",         # outright URL
+    "../../etc/passwd",                # path traversal in case it ever gets joined
+    "abcd ef" + "0" * 33,              # whitespace splice
+])
+def test_parse_apibay_item_rejects_malformed_info_hash(th, hostile_hash):
+    """A buggy or hostile apibay must not produce a magnet URI with a
+    malformed info_hash. The TUI's clipboard / send-to-client actions
+    pass `entry["magnet"]` straight through, so we want this caught at
+    parse time rather than at the user's torrent client."""
+    record = _apibay_record(hostile_hash)
+    assert th.sources.tpb._parse_apibay_item(record) is None
+
+
+@pytest.mark.parametrize("good_hash", [
+    "0123456789abcdef0123456789abcdef01234567",   # 40 hex
+    "ABCDEF0123456789abcdef0123456789ABCDEF01",   # 40 hex mixed case
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567",           # 32 base32
+])
+def test_parse_apibay_item_accepts_valid_info_hash(th, good_hash):
+    record = _apibay_record(good_hash)
+    parsed = th.sources.tpb._parse_apibay_item(record)
+    assert parsed is not None
+    assert good_hash.lower() in parsed["magnet"].lower() or good_hash in parsed["magnet"]
